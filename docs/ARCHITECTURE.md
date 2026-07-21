@@ -354,6 +354,35 @@ target either the parent (covers every variant) or one specific variant
 8 tests. No live route/UI — same phase-appropriate scope as every other
 module so far (schema + real service logic, exercised via pglite).
 
+## Marketing & Offers (Phase 1.5, module 2 of 6 — implemented)
+
+Moved from schema-only to real logic — `lib/marketing/service.ts`. Directly
+reuses module 1's `resolveSkusForTarget` (imports `createProductsService`),
+which is exactly why product variants was sequenced first.
+
+- **`coupons` gained `targetProductId`/`targetVariantId`** (both nullable;
+  at most one set — enforced at the application layer, not a DB CHECK,
+  matching this schema's existing convention for cross-field invariants).
+  `NULL`/`NULL` means the coupon applies to the whole cart.
+- **`validateCoupon`** is read-only (checks active/date-range/max-uses/
+  min-order, resolves eligible cart lines via the target, computes the
+  discount from those lines only — not the full cart) — call it before
+  checkout. **`redeemCoupon`** is the only function that consumes a use,
+  via the same atomic-guarded-UPDATE pattern as
+  `lib/ledger/balance.ts::applyInventoryDelta` (`WHERE ... uses_count <
+  max_uses` evaluated by Postgres against the current row, not a
+  read-then-write check) — a concurrency test with 8 simultaneous
+  redemptions against `maxUses: 5` proves exactly 5 succeed, not more.
+- **Fixed-amount discounts are capped at the eligible subtotal** (never
+  produce a negative line total) — e.g. a 500 SAR coupon against a single
+  30 SAR eligible line discounts 30, not 500.
+- **`minOrderAmount` checks the whole cart**, regardless of targeting — a
+  "10% off the black size-40 shirt" coupon can still require the overall
+  order to reach a minimum, a deliberate real-world rule, not an oversight.
+
+12 tests (concurrency, targeting-to-variant, targeting-to-product,
+untargeted, all the rejection reasons). No live route/UI yet.
+
 ## Why schema-only, not live integration
 
 The design doc's "Demand Evidence" section flags that external, paying-customer
