@@ -44,6 +44,17 @@ silent drift. See git log for the sequence of decisions.
   `supplier_invoice_lines`, `supplier_payments`. Mirrors the
   PO → receipt → supplier invoice → payment cycle from the design doc's
   vision list.
+- **Central-warehouse inventory model** (founder-directed, standard ERP
+  practice): `branches.type` now includes `'warehouse'` alongside
+  `'physical'`/`'online'`, and `branches.isDefaultWarehouse` (partial unique
+  index — at most one default warehouse per tenant) marks the default
+  receiving location. Purchases land at the warehouse by default; `stock_transfers`
+  + `stock_transfer_lines` move stock from the warehouse to a branch or the
+  online store, generating a paired `transfer_out`/`transfer_in`
+  `inventory_movements` row each (posting logic not built yet — schema only).
+  Direct-to-branch receiving remains possible as an exception path (`goods_receipts.purchaseOrderId`
+  is nullable) for cases like an urgent local purchase — the warehouse model
+  is the default, not a hard requirement.
 - Marketing & Offers: `coupons` (with an optional `sallaCouponCode` link, since
   many merchants manage the coupon itself inside Salla) and
   `marketing_campaigns`.
