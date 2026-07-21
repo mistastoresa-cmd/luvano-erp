@@ -27,6 +27,26 @@ export interface BranchBalanceSheet {
   totalEquity: number
 }
 
+export interface CompanyProfitAndLoss {
+  dateFrom: Date
+  dateTo: Date
+  revenueLines: AccountLineAmount[]
+  expenseLines: AccountLineAmount[]
+  totalRevenue: number
+  totalExpense: number
+  netProfit: number
+}
+
+export interface CompanyBalanceSheet {
+  asOfDate: Date
+  assetLines: AccountLineAmount[]
+  liabilityLines: AccountLineAmount[]
+  equityLines: AccountLineAmount[]
+  totalAssets: number
+  totalLiabilities: number
+  totalEquity: number
+}
+
 export interface ReportingService {
   // Revenue/expense (incl. COGS) for one branch over a date range, aggregated
   // from posted journal_entry_lines via journal_entries.branchId. This is a
@@ -49,4 +69,15 @@ export interface ReportingService {
     branchId: string,
     asOfDate: Date
   ): Promise<BranchBalanceSheet>
+
+  // Same aggregation as getBranchProfitAndLoss but across every branch of
+  // the tenant — the "company as a whole" view the founder asked for once
+  // every per-branch report was confirmed working (module 6, last of
+  // Phase 1.5). Not a sum of the per-branch reports called separately; one
+  // aggregate query over the whole tenant's posted lines, so it can't drift
+  // from a branch total due to a branch being added/removed mid-period.
+  getCompanyProfitAndLoss(tenantId: string, dateFrom: Date, dateTo: Date): Promise<CompanyProfitAndLoss>
+
+  // Company-wide counterpart of getBranchBalanceSheet.
+  getCompanyBalanceSheet(tenantId: string, asOfDate: Date): Promise<CompanyBalanceSheet>
 }

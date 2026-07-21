@@ -5,6 +5,8 @@ import type {
   ReportingService,
   BranchProfitAndLoss,
   BranchBalanceSheet,
+  CompanyProfitAndLoss,
+  CompanyBalanceSheet,
   AccountLineAmount,
 } from './types'
 
@@ -17,24 +19,26 @@ interface AccountAggregateRow {
   creditSum: string
 }
 
-// Shared by both reports below — one aggregate query per (tenant, branch,
-// entryDate window), grouped by account. Callers turn debit/credit sums into
-// a signed amount per account depending on that account's normal balance
-// side (revenue/liability/equity increase with credit; asset/expense
+// Shared by every report below — one aggregate query per (tenant, branch?,
+// entryDate window), grouped by account. branchId omitted (undefined) means
+// company-wide: every branch of the tenant in one aggregate, not a sum of
+// per-branch results computed separately. Callers turn debit/credit sums
+// into a signed amount per account depending on that account's normal
+// balance side (revenue/liability/equity increase with credit; asset/expense
 // increase with debit).
 async function aggregateByAccount(
   db: Db,
   tenantId: string,
-  branchId: string,
+  branchId: string | undefined,
   entryDateFrom: Date | null,
   entryDateTo: Date
 ): Promise<AccountAggregateRow[]> {
   const conditions = [
     eq(journalEntries.tenantId, tenantId),
-    eq(journalEntries.branchId, branchId),
     eq(journalEntries.status, 'posted'),
     lte(journalEntries.entryDate, entryDateTo),
   ]
+  if (branchId) conditions.push(eq(journalEntries.branchId, branchId))
   if (entryDateFrom) conditions.push(gte(journalEntries.entryDate, entryDateFrom))
 
   return db
@@ -110,6 +114,49 @@ export function createReportingService(db: Db): ReportingService {
 
       return {
         branchId,
+        asOfDate,
+        assetLines,
+        liabilityLines,
+        equityLines,
+        totalAssets: sumLines(assetLines),
+        totalLiabilities: sumLines(liabilityLines),
+        totalEquity: sumLines(equityLines),
+      }
+    },
+
+    async getCompanyProfitAndLoss(
+      tenantId: string,
+      dateFrom: Date,
+      dateTo: Date
+    ): Promise<CompanyProfitAndLoss> {
+      const rows = await aggregateByAccount(db, tenantId, undefined, dateFrom, dateTo)
+
+      const revenueLines = rows.filter((r) => r.accountType === 'revenue').map((r) => toLine(r, 'credit'))
+      const expenseLines = rows.filter((r) => r.accountType === 'expense').map((r) => toLine(r, 'debit'))
+      const totalRevenue = sumLines(revenueLines)
+      const totalExpense = sumLines(expenseLines)
+
+      return {
+        dateFrom,
+        dateTo,
+        revenueLines,
+        expenseLines,
+        totalRevenue,
+        totalExpense,
+        netProfit: Math.round((totalRevenue - totalExpense) * 100) / 100,
+      }
+    },
+
+    async getCompanyBalanceSheet(tenantId: string, asOfDate: Date): Promise<CompanyBalanceSheet> {
+      const rows = await aggregateByAccount(db, tenantId, undefined, null, asOfDate)
+
+      const assetLines = rows.filter((r) => r.accountType === 'asset').map((r) => toLine(r, 'debit'))
+      const liabilityLines = rows
+        .filter((r) => r.accountType === 'liability')
+        .map((r) => toLine(r, 'credit'))
+      const equityLines = rows.filter((r) => r.accountType === 'equity').map((r) => toLine(r, 'credit'))
+
+      return {
         asOfDate,
         assetLines,
         liabilityLines,

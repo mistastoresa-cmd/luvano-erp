@@ -477,6 +477,37 @@ implementation instead of drifting.
 partial-then-complete across two shipments, unknown-sku rejection,
 receiving-against-closed-PO rejection). No live route/UI yet.
 
+## Company-wide consolidated report (Phase 1.5, module 6 of 6 — implemented, Phase 1.5 complete)
+
+Extends `lib/reporting/service.ts` with `getCompanyProfitAndLoss` and
+`getCompanyBalanceSheet` — the whole-company view requested once every
+per-branch report was confirmed working.
+
+- **`aggregateByAccount`'s `branchId` parameter became optional**
+  (`string | undefined`) instead of adding a parallel code path —
+  omitting it drops the `journal_entries.branchId` filter, so the same
+  aggregate query naturally covers "every branch of this tenant." This
+  is one aggregate query over the whole tenant's posted lines, **not**
+  a sum of the per-branch reports called separately — it can't drift
+  from a branch total if a branch is added or removed mid-period, and
+  it costs one query instead of N.
+- Tenant isolation is still enforced the same way as every other query
+  in this file (`journal_entries.tenantId` in the `WHERE`) — verified
+  with a test seeding a second tenant with a 9000 SAR sale and
+  confirming it never appears in the first tenant's company total.
+
+7 tests total in `tests/reporting/service.test.ts` (4 pre-existing +
+3 new: company P&L sums across branches, company P&L tenant isolation,
+company balance sheet sums cash across branches). No live route/UI yet.
+
+**This closes Phase 1.5** — all 6 modules (product variants, marketing,
+customers, HR, purchasing PO lifecycle, company report) are now built
+past schema-only into real service logic with test coverage, per the
+founder's explicit sequencing. Next up per `ROADMAP.md`: RBAC T7/T8
+(wiring `assertRole`/`assertBranchAccess` into the 5 existing services,
+plus a denied-access audit trail), then Phase 2 (live Salla webhook
+integration, plan already locked and simply paused until this point).
+
 ## Why schema-only, not live integration
 
 The design doc's "Demand Evidence" section flags that external, paying-customer
