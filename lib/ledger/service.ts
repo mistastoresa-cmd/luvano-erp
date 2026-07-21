@@ -111,6 +111,7 @@ export function createLedgerService(db: Db): LedgerService {
             invoiceNumber: input.invoiceNumber,
             sourceType: input.sourceType,
             sourceReference: input.sourceReference,
+            customerId: input.customerId,
             customerName: input.customerName,
             customerPhone: input.customerPhone,
             subtotal: subtotal.toFixed(2),

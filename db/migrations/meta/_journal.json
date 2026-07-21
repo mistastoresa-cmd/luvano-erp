@@ -15,6 +15,13 @@
       "when": 1784638474769,
       "tag": "0001_useful_patriot",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784638856284,
+      "tag": "0002_workable_agent_brand",
+      "breakpoints": true
     }
   ]
 }

@@ -24,8 +24,11 @@ npm run build
 
 ## Structure
 
-- `db/schema/` — Drizzle table definitions (tenants, branches, inventory
-  balances/movements, sale invoices/lines, sync batches, reconciliation alerts).
+- `db/schema/` — Drizzle table definitions across 8 modules (see
+  `docs/ARCHITECTURE.md` for the full breakdown): ledger (inventory + unified
+  invoicing, has a working service layer), accounting, customers, suppliers +
+  purchasing, marketing & offers, HR. Only the ledger module has real
+  read/write logic — everything else is schema only in this phase.
 - `lib/connectors/` — platform-agnostic ingestion interface + Salla adapter.
 - `lib/ledger/` — the ledger's core read/write service and atomic balance logic.
 - `lib/sync/` — server-side contract for the future branch-sync API.

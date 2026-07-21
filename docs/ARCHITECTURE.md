@@ -34,6 +34,23 @@ silent drift. See git log for the sequence of decisions.
   constraint, matching the transactional-atomicity pattern already used in
   `lib/ledger/service.ts`), and `fixed_assets`. Schema only — no posting logic,
   no service layer, no route handlers yet.
+- Customers: `customers` (CRM entity), with `sale_invoices.customerId` now
+  linking to it — `customerName`/`customerPhone` on `sale_invoices` remain as
+  free-text fallback for walk-in sales with no registered customer.
+- Suppliers + full purchasing cycle (schema only): `suppliers`,
+  `purchase_orders` + `purchase_order_lines`, `goods_receipts` +
+  `goods_receipt_lines` (with `inventoryMovementId` reserved for closing the
+  loop to the ledger once receipt-posting logic exists), `supplier_invoices` +
+  `supplier_invoice_lines`, `supplier_payments`. Mirrors the
+  PO → receipt → supplier invoice → payment cycle from the design doc's
+  vision list.
+- Marketing & Offers: `coupons` (with an optional `sallaCouponCode` link, since
+  many merchants manage the coupon itself inside Salla) and
+  `marketing_campaigns`.
+- HR: `employees`, `attendance_records`, `leave_requests`, `payroll_runs` +
+  `payroll_entries`.
+- Reports has no dedicated schema — per the design doc it's a horizontal layer
+  over the other modules, not a separate module.
 - A platform-agnostic connector interface (`lib/connectors/types.ts`) plus a
   concrete Salla implementation (`lib/connectors/salla/adapter.ts`) that
   normalizes webhook payloads into ledger events — pure functions over fixture
@@ -58,10 +75,14 @@ silent drift. See git log for the sequence of decisions.
 - **No Zid/Shopify connector implementation** — the interface supports adding one
   later without touching the ledger core, but zero demand evidence exists for
   either platform (see the design doc), so none is built now.
-- **No double-entry general ledger / chart of accounts.** The ledger in this
-  phase is bounded to inventory movements and sale invoices only — full
-  accounting (HR, marketing, coupons, Zakat/tax compliance) is future scope
-  per the design doc's phased module list.
+- **No posting/business logic for accounting, purchasing, marketing, or HR.**
+  All of these modules exist as schema only in this phase — no service layer,
+  no route handlers, no validation of cross-table invariants (e.g. nothing
+  enforces that a `journal_entries` row's lines actually balance, or that a
+  `goods_receipt_lines` row's `inventoryMovementId` gets populated). Only
+  `lib/ledger/service.ts` (inventory + invoicing) has real read/write logic.
+- **No Zakat/tax compliance (ZATCA) implementation** — flagged in the design
+  doc as requiring dedicated legal/compliance research before any build.
 - **No OAuth implementation.** `luvano-dashboard/lib/salla-client.ts` and
   `lib/auth.ts` already implement Salla OAuth (token exchange + refresh) and
   work correctly — this will be reused/ported when the live webhook route is

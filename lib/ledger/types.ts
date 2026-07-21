@@ -56,6 +56,7 @@ export interface RecordSaleInvoiceInput {
   invoiceNumber: string
   lines: SaleInvoiceLineInput[]
   sourceReference?: string
+  customerId?: string
   customerName?: string
   customerPhone?: string
   clientGeneratedId?: string

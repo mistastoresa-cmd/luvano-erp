@@ -1,6 +1,7 @@
 import { pgTable, uuid, text, numeric, timestamp, uniqueIndex, index } from 'drizzle-orm/pg-core'
 import { tenants } from './tenants'
 import { branches } from './branches'
+import { customers } from './customers'
 
 // One row per sale event — this table IS "unified invoicing" per the design doc's
 // definition: a single invoice record per sale, whether it originated from a Salla
@@ -21,6 +22,11 @@ export const saleInvoices = pgTable(
     }).notNull(),
     // Salla order id/reference when sourceType is 'salla_order'.
     sourceReference: text('source_reference'),
+    // Nullable — a walk-in branch sale may have no registered customer.
+    // customerName/customerPhone stay as free-text fallback for exactly that
+    // case; customerId is set once the customers table (added alongside this
+    // column) has a matching record.
+    customerId: uuid('customer_id').references(() => customers.id),
     customerName: text('customer_name'),
     customerPhone: text('customer_phone'),
     currency: text('currency').notNull().default('SAR'),
