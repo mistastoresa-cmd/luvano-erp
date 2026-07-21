@@ -243,9 +243,83 @@ means in practice, and is the right amount of rigor for this phase.
   `lib/auth.ts` already implement Salla OAuth (token exchange + refresh) and
   work correctly — this will be reused/ported when the live webhook route is
   built, not rebuilt from scratch.
-- **No RBAC / user auth system.** `lib/tenancy/context.ts` defines the contract
-  a future request handler will use to resolve which tenant a request belongs
-  to; no session/auth system backs it yet.
+- **`lib/tenancy/context.ts` is now superseded, not deleted.** Written in
+  Phase 1 as a placeholder contract for a future auth system — RBAC (below)
+  is that system, and it resolves tenancy via `lib/authz/service.ts`, not
+  this file. Left in place as dead code rather than removed mid-session;
+  worth deleting in a follow-up cleanup pass.
+
+## RBAC / Authentication (Phase 1 of ROADMAP.md, implemented)
+
+Founder-directed, planned via `/plan-eng-review`, then implemented in the same
+session. Real code, not schema-only — the first part of this codebase
+actually reachable via an HTTP request (`/api/onboarding`,
+`/api/auth/[...all]`), not just pglite-tested service functions.
+
+- **Better Auth** (`lib/auth/server.ts`) — chosen over building custom
+  session/JWT auth or using Auth.js/NextAuth, per the review's Layer-1 search
+  (current best practice for Next.js + Drizzle + Neon). Its `organization`
+  plugin provides multi-tenancy + membership out of the box.
+- **`tenants.id` stays the single tenancy reference**, not Better Auth's own
+  `organization.id` — `organization` gets a hand-added `tenantId` column
+  (uuid, FK to `tenants.id`) instead. None of the 32 pre-existing
+  `tenant_id`-scoped tables needed a migration.
+- **4 roles**: `owner`, `accountant`, `branch_manager`, `staff`
+  (`lib/authz/types.ts::Role`). `branch_manager`/`staff` are branch-scoped
+  from day one via a `branchAccess` field on `member`
+  (`{"type":"all"}` or `{"type":"list","branchIds":[...]}` — two genuinely
+  different shapes, not "a list that happens to contain everything").
+- **Defense in depth**: `proxy.ts` (Next.js 16 renamed `middleware.ts` →
+  `proxy.ts`, function `middleware` → `proxy`) does a fast, DB-free cookie
+  check per request; `lib/authz/service.ts::assertRole`/`assertBranchAccess`
+  is called again inside services, since webhooks/cron reach services
+  directly without ever passing through the HTTP middleware layer.
+  `SYSTEM_CONTEXT` (a real exported symbol, not a magic string) is the
+  explicit bypass identity for those non-HTTP callers — there is no implicit
+  "missing context means allow" path.
+- **Short sessions (30 min) + fast renewal window**, not long-lived tokens —
+  a revoked/changed membership takes effect on next renewal instead of
+  lingering.
+- **Provisioning** (`lib/auth/provisioning.ts`): signup creates a `tenants`
+  row, a Better Auth `organization` row linked to it, and a `member` row with
+  `role: 'owner'`, `branchAccess: {"type":"all"}` — all in one transaction.
+  Salla connection (a separate, still-unbuilt initiative) does **not**
+  auto-create a tenant; a merchant must provision here first.
+
+**Real bugs hit and fixed while implementing this (not hypothetical, not
+caught by review — caught by actually running the code):**
+1. `drizzle-orm@0.36.4` didn't satisfy Better Auth's peer requirement
+   (`^0.45.2`) — upgraded `drizzle-orm`/`drizzle-kit`, then re-ran the full
+   46-test suite to confirm nothing broke before proceeding.
+2. Better Auth's schema generator crashes trying to serialize a JSON-string
+   `defaultValue` containing embedded double-quotes (`'{"type":"all"}'`) —
+   worked around by removing the default entirely; there's no single correct
+   default role/branchAccess anyway, the provisioning/invite flow must always
+   set both explicitly.
+3. `organization.tenantId` was generated as `text`, but `tenants.id` is
+   `uuid` — Postgres rejected the FK ("Key columns ... are of incompatible
+   types"). Fixed by typing the hand-added column as `uuid` (it's ours, not
+   a Better Auth core column, so changing it was safe).
+4. A first draft of the session-activation update in
+   `lib/auth/provisioning.ts` had no `.where()` clause — would have
+   reassigned `activeOrganizationId` on every session in the entire
+   database, not just the new user's. Caught before it shipped, not after.
+5. `lib/auth/db.ts` originally threw at module-load time if `DATABASE_URL`
+   was unset — which broke `next build` itself (page-data collection runs
+   with `NODE_ENV=production` and no real secrets in most build
+   environments), not just runtime requests. Fixed by making the Postgres
+   connection lazy (constructed on first real query, via a `Proxy`), so a
+   missing `DATABASE_URL` only fails when something actually queries, not on
+   import.
+6. Next.js 16 renamed the `middleware.ts` convention to `proxy.ts` (function
+   `middleware` → `proxy`) — caught by the build itself failing with a clear
+   message, not a guess in advance.
+
+**Not yet built** (see `ROADMAP.md` Phase 1 task list, T7/T8 remaining):
+wiring `assertRole`/`assertBranchAccess` into the 5 existing services
+(ledger, purchasing, warehouse, accounting, reporting) — they don't check
+authorization yet, this phase only built the auth/authz foundation itself —
+and an audit trail for denied access attempts.
 
 ## Why schema-only, not live integration
 
