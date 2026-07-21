@@ -149,6 +149,7 @@ describe('remaining module schemas (customers/suppliers/purchasing/marketing/HR)
       .values({
         tenantId: tenant.id,
         branchId: physicalBranch.id,
+        employeeNumber: 'EMP-TEST-1',
         name: 'Mohammed Al-Otaibi',
         jobTitle: 'Branch Cashier',
         hireDate: '2026-01-01',

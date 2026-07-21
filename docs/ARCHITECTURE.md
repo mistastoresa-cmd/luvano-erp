@@ -447,6 +447,91 @@ too many concurrent WASM instances competing for memory. Capped with
 `poolOptions.forks.maxForks: 4`; reproduced the crash twice before the
 fix, clean on every run after.
 
+## HR expansion — Saudi Labor Law compliance, registration, tasks, correspondence (post-Phase 1.5)
+
+Requested directly by the founder after Phase 1.5 closed: the original HR
+module (above) only proved payroll math and accounting posting worked — it
+had **no employee registration service at all** (`lib/hr/service.ts` was
+payroll-only) and none of the Saudi Labor Law (نظام العمل) rules that
+actually govern Saudi HR. Five new sibling modules were added, following
+the same directory-per-concern convention as `lib/products/`,
+`lib/marketing/`, `lib/customers/`:
+
+- **`lib/employees/`** — full registration CRUD. `createEmployee` allocates
+  a sequential `employeeNumber` (`EMP-0001`, `EMP-0002`, ...) via a new
+  `employee_number_counters` table, using the same atomic
+  `INSERT...ON CONFLICT DO UPDATE...RETURNING` idiom as `redeemCoupon`'s
+  guarded increment — race-safe under concurrent registrations, and works
+  identically whether the tenant's counter row already exists or not (the
+  returned value minus 1 is always the number to assign). `employees`
+  gained `idType`/`idExpiryDate` (Iqama tracking), `nationality`,
+  `contractType`/`contractEndDate`/`probationEndDate`, `department`,
+  `gosiNumber`, `ibanNumber`, `terminatedAt`/`terminationReason`, and a
+  `userId` column linking to Better Auth's `user.id` (**text**, not uuid —
+  same class of bug as the earlier `organization.tenantId` type mismatch,
+  caught the same way: pglite rejected the FK at migration time before any
+  test ran). `userId` is schema-only this pass — no employee self-service
+  login flow yet; that needs a new RBAC `employee` role wired through
+  `lib/authz`, deliberately deferred to the already-planned RBAC T7/T8 pass.
+- **`lib/leave/`** — art. 109 (21 days/year, rising to 30 after 5 years of
+  continuous service, computed live from `employees.hireDate` on every
+  call rather than stored — a later year automatically gets the higher
+  entitlement with no backfill) and art. 117 (sick leave: first 30
+  days/year full pay, next 60 days 3/4 pay, final 30 days unpaid).
+  `createLeaveRequest` rejects an annual request that would exceed the
+  remaining balance; for sick leave it computes (but does not persist) the
+  pay tier from the employee's already-approved sick days earlier in the
+  same year — a request straddling a tier boundary gets the tier its
+  first day falls in, a documented simplification rather than a per-day
+  split. No schema change to `leave_requests` — the tier is recomputed on
+  read each time, the same aggregate-on-read philosophy `lib/reporting/`
+  already uses instead of maintaining redundant balance columns.
+- **`lib/gratuity/`** — end-of-service gratuity, art. 84 (half-month
+  salary/year for the first 5 years, full month/year beyond that) reduced
+  per art. 85 when `terminationReason === 'resignation'` (0% under 2
+  years, 1/3 at 2–5 years, 2/3 at 5–10 years, full 10+ years — any other
+  reason always gets the full amount). `previewEndOfServiceGratuity` is a
+  pure read; `terminateEmployee` writes `gratuity_payments`, flips the
+  employee to `'terminated'`, and — reusing `postJournalEntryInTx`
+  exported from `lib/accounting/service.ts` (same pattern payroll uses) —
+  posts a balanced debit-`gratuity_expense`/credit-`gratuity_payable`
+  entry, skipped entirely when the net amount is 0 (an early resignation
+  with no payout shouldn't produce a zero-amount journal entry). Already-
+  terminated employees can't be re-terminated — that's the idempotency
+  guard, not a re-postable action like payroll's source-reference dedup.
+- **`lib/employee-tasks/`** — `employee_tasks` (new table): assign a task
+  to an employee, list what's assigned to them (newest first) — this is
+  the "ما يُتوقَّع من الموظف إنجازه" reference view, deliberately simple
+  (no priority/category) rather than a full task-management system.
+- **`lib/hr-notifications/`** — `employee_notifications` (new table):
+  official correspondence — warning (إنذار), commendation (تنويه), notice
+  (إشعار), deduction (خصم), other. `acknowledgeNotification` records the
+  employee's receipt (standard practice for warnings ahead of any later
+  disciplinary action) and can't be called twice on the same notification.
+  A deduction notification's `relatedAmount` is **not** auto-applied to
+  payroll — it stays a manual reference the caller feeds into the existing
+  `EmployeePayrollAdjustment` parameter of `processPayrollRun`, avoiding
+  hidden cross-module side effects.
+- **`accountMappingKeys`** gained `gratuity_expense`/`gratuity_payable`;
+  `journal_entries.sourceType` gained `'gratuity'` (same TS-level-only
+  enum addition as `'payroll'` earlier — no migration needed).
+
+**Explicitly out of scope this pass** (flagged to the founder up front):
+actual employee self-service login (needs the RBAC `employee` role +
+`lib/authz` wiring from T7/T8), generated/stored PDF letters or contracts
+(no file storage integration exists anywhere in this repo yet — greenfield
+decision, likely Vercel Blob given the Next.js/Vercel stack, not decided),
+GOSI/Mudad/Qiwa API integration, Iqama-expiry alerting, Nitaqat
+(Saudization ratio) reporting.
+
+35 tests across 5 new files (`tests/employees/`, `tests/leave/`,
+`tests/gratuity/`, `tests/employee-tasks/`, `tests/hr-notifications/`).
+`vitest.config.ts`'s fork cap was tightened again (`maxForks: 4 → 2`,
+`minForks: 1` added — Tinypool errors if `minThreads`/`maxThreads` land on
+opposite sides of the default without both being set explicitly) after the
+suite crossed ~20 pglite-backed files and started flaking again even at
+the previous cap; confirmed clean on repeated full-suite runs after.
+
 ## Purchasing — full PO lifecycle (Phase 1.5, module 5 of 6 — implemented)
 
 Extends `lib/purchasing/service.ts` beyond `postGoodsReceipt` (already

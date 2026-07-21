@@ -19,7 +19,8 @@ export default defineConfig({
     // reliability.
     poolOptions: {
       forks: {
-        maxForks: 4,
+        minForks: 1,
+        maxForks: 2,
       },
     },
   },

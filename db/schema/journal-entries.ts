@@ -30,6 +30,7 @@ export const journalEntries = pgTable(
         'purchase_invoice',
         'supplier_payment',
         'payroll',
+        'gratuity',
         'adjustment',
         'system',
       ],

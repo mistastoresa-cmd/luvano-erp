@@ -17,6 +17,8 @@ export const accountMappingKeys = [
   'output_tax_payable',
   'salary_expense',
   'salary_payable',
+  'gratuity_expense',
+  'gratuity_payable',
 ] as const
 
 export const accountMappings = pgTable(

@@ -29,6 +29,7 @@ async function seedEmployee(
     .insert(employees)
     .values({
       tenantId,
+      employeeNumber: `EMP-TEST-${crypto.randomUUID()}`,
       name: overrides.name ?? 'Mohammed Al-Otaibi',
       hireDate: '2025-01-01',
       baseSalary: overrides.baseSalary ?? '5000.00',
