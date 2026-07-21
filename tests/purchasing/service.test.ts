@@ -62,3 +62,173 @@ describe('PurchasingService.postGoodsReceipt', () => {
     expect(balance).toBe(15)
   })
 })
+
+describe('PurchasingService — full PO lifecycle', () => {
+  async function seedSupplier(db: Awaited<ReturnType<typeof createTestDb>>, tenantId: string) {
+    const [supplier] = await db.insert(suppliers).values({ tenantId, name: 'Test Supplier' }).returning()
+    return supplier
+  }
+
+  it('creates a draft PO with lines', async () => {
+    const db = await createTestDb()
+    const { tenant, physicalBranch } = await seedTenantWithBranch(db)
+    const supplier = await seedSupplier(db, tenant.id)
+    const service = createPurchasingService(db)
+
+    const { purchaseOrderId } = await service.createPurchaseOrder({
+      tenantId: tenant.id,
+      branchId: physicalBranch.id,
+      supplierId: supplier.id,
+      poNumber: 'PO-1',
+      orderDate: '2026-07-20',
+      lines: [{ sku: 'SKU-1', productName: 'Widget', quantityOrdered: 10, unitCost: 20 }],
+    })
+
+    expect(purchaseOrderId).toBeTruthy()
+  })
+
+  it('moves a draft PO to sent, and rejects sending it twice', async () => {
+    const db = await createTestDb()
+    const { tenant, physicalBranch } = await seedTenantWithBranch(db)
+    const supplier = await seedSupplier(db, tenant.id)
+    const service = createPurchasingService(db)
+
+    const { purchaseOrderId } = await service.createPurchaseOrder({
+      tenantId: tenant.id,
+      branchId: physicalBranch.id,
+      supplierId: supplier.id,
+      poNumber: 'PO-1',
+      orderDate: '2026-07-20',
+      lines: [{ sku: 'SKU-1', productName: 'Widget', quantityOrdered: 10, unitCost: 20 }],
+    })
+
+    await service.sendPurchaseOrder(tenant.id, purchaseOrderId)
+    await expect(service.sendPurchaseOrder(tenant.id, purchaseOrderId)).rejects.toThrow('can only send a draft PO')
+  })
+
+  it('receiving the full ordered quantity in one shipment marks the PO received and posts inventory', async () => {
+    const db = await createTestDb()
+    const { tenant, physicalBranch } = await seedTenantWithBranch(db)
+    const supplier = await seedSupplier(db, tenant.id)
+    const service = createPurchasingService(db)
+
+    const { purchaseOrderId } = await service.createPurchaseOrder({
+      tenantId: tenant.id,
+      branchId: physicalBranch.id,
+      supplierId: supplier.id,
+      poNumber: 'PO-1',
+      orderDate: '2026-07-20',
+      lines: [{ sku: 'SKU-1', productName: 'Widget', quantityOrdered: 10, unitCost: 20 }],
+    })
+    await service.sendPurchaseOrder(tenant.id, purchaseOrderId)
+
+    const result = await service.receivePurchaseOrder({
+      tenantId: tenant.id,
+      purchaseOrderId,
+      receiptNumber: 'GR-1',
+      receivedDate: '2026-07-21',
+      lines: [{ sku: 'SKU-1', quantityReceived: 10, unitCost: 20 }],
+    })
+
+    expect(result.poStatus).toBe('received')
+    const balance = await readInventoryBalance(db, tenant.id, physicalBranch.id, 'SKU-1')
+    expect(balance).toBe(10)
+  })
+
+  it('receiving less than ordered marks the PO partially_received, and a second shipment completes it', async () => {
+    const db = await createTestDb()
+    const { tenant, physicalBranch } = await seedTenantWithBranch(db)
+    const supplier = await seedSupplier(db, tenant.id)
+    const service = createPurchasingService(db)
+
+    const { purchaseOrderId } = await service.createPurchaseOrder({
+      tenantId: tenant.id,
+      branchId: physicalBranch.id,
+      supplierId: supplier.id,
+      poNumber: 'PO-1',
+      orderDate: '2026-07-20',
+      lines: [{ sku: 'SKU-1', productName: 'Widget', quantityOrdered: 10, unitCost: 20 }],
+    })
+    await service.sendPurchaseOrder(tenant.id, purchaseOrderId)
+
+    const first = await service.receivePurchaseOrder({
+      tenantId: tenant.id,
+      purchaseOrderId,
+      receiptNumber: 'GR-1',
+      receivedDate: '2026-07-21',
+      lines: [{ sku: 'SKU-1', quantityReceived: 6, unitCost: 20 }],
+    })
+    expect(first.poStatus).toBe('partially_received')
+
+    const second = await service.receivePurchaseOrder({
+      tenantId: tenant.id,
+      purchaseOrderId,
+      receiptNumber: 'GR-2',
+      receivedDate: '2026-07-22',
+      lines: [{ sku: 'SKU-1', quantityReceived: 4, unitCost: 20 }],
+    })
+    expect(second.poStatus).toBe('received')
+
+    const balance = await readInventoryBalance(db, tenant.id, physicalBranch.id, 'SKU-1')
+    expect(balance).toBe(10)
+  })
+
+  it('rejects receiving a sku that is not on the PO', async () => {
+    const db = await createTestDb()
+    const { tenant, physicalBranch } = await seedTenantWithBranch(db)
+    const supplier = await seedSupplier(db, tenant.id)
+    const service = createPurchasingService(db)
+
+    const { purchaseOrderId } = await service.createPurchaseOrder({
+      tenantId: tenant.id,
+      branchId: physicalBranch.id,
+      supplierId: supplier.id,
+      poNumber: 'PO-1',
+      orderDate: '2026-07-20',
+      lines: [{ sku: 'SKU-1', productName: 'Widget', quantityOrdered: 10, unitCost: 20 }],
+    })
+
+    await expect(
+      service.receivePurchaseOrder({
+        tenantId: tenant.id,
+        purchaseOrderId,
+        receiptNumber: 'GR-1',
+        receivedDate: '2026-07-21',
+        lines: [{ sku: 'SKU-UNKNOWN', quantityReceived: 1, unitCost: 20 }],
+      })
+    ).rejects.toThrow('is not on purchase_order')
+  })
+
+  it('rejects receiving against an already-received PO', async () => {
+    const db = await createTestDb()
+    const { tenant, physicalBranch } = await seedTenantWithBranch(db)
+    const supplier = await seedSupplier(db, tenant.id)
+    const service = createPurchasingService(db)
+
+    const { purchaseOrderId } = await service.createPurchaseOrder({
+      tenantId: tenant.id,
+      branchId: physicalBranch.id,
+      supplierId: supplier.id,
+      poNumber: 'PO-1',
+      orderDate: '2026-07-20',
+      lines: [{ sku: 'SKU-1', productName: 'Widget', quantityOrdered: 10, unitCost: 20 }],
+    })
+    await service.receivePurchaseOrder({
+      tenantId: tenant.id,
+      purchaseOrderId,
+      receiptNumber: 'GR-1',
+      receivedDate: '2026-07-21',
+      lines: [{ sku: 'SKU-1', quantityReceived: 10, unitCost: 20 }],
+    })
+
+    await expect(
+      service.receivePurchaseOrder({
+        tenantId: tenant.id,
+        purchaseOrderId,
+        receiptNumber: 'GR-2',
+        receivedDate: '2026-07-22',
+        lines: [{ sku: 'SKU-1', quantityReceived: 1, unitCost: 20 }],
+      })
+    ).rejects.toThrow('cannot receive against it')
+  })
+})

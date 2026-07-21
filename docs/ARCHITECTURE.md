@@ -447,6 +447,36 @@ too many concurrent WASM instances competing for memory. Capped with
 `poolOptions.forks.maxForks: 4`; reproduced the crash twice before the
 fix, clean on every run after.
 
+## Purchasing — full PO lifecycle (Phase 1.5, module 5 of 6 — implemented)
+
+Extends `lib/purchasing/service.ts` beyond `postGoodsReceipt` (already
+built earlier) with the rest of the draft→sent→received flow. The old
+`postGoodsReceipt` body was extracted into an internal `postGoodsReceiptInTx`
+so both the standalone entry point and the new PO-driven path share one
+implementation instead of drifting.
+
+- **`createPurchaseOrder`** inserts a PO + lines in `'draft'`.
+  **`sendPurchaseOrder`** flips `draft → sent`, and rejects anything not
+  currently `draft` — a sent/received/cancelled PO can't be "sent" again.
+- **`receivePurchaseOrder`** is the PO-lifecycle counterpart of
+  `postGoodsReceipt`: it creates a `goods_receipt` + lines against an
+  existing PO (rejecting any sku not on that PO), posts inventory for it
+  via the shared `postGoodsReceiptInTx`, then recomputes the PO's status
+  from **cumulative received quantity vs ordered quantity per line**,
+  summed across every completed receipt linked to that PO — not just the
+  one just posted. This is what makes **partial shipments** work
+  correctly: receiving 6 of 10 ordered units sets `partially_received`;
+  a second receipt for the remaining 4 sets `received`, and the
+  inventory balance ends up at 10 either way (verified by a test that
+  receives across two separate calls).
+- **Receiving against an already-`received`/`cancelled` PO is rejected**
+  — there's no legitimate reason to receive more once a PO is closed.
+
+8 tests total in `tests/purchasing/service.test.ts` (2 pre-existing +
+6 new: PO creation, send/re-send rejection, full receipt in one shipment,
+partial-then-complete across two shipments, unknown-sku rejection,
+receiving-against-closed-PO rejection). No live route/UI yet.
+
 ## Why schema-only, not live integration
 
 The design doc's "Demand Evidence" section flags that external, paying-customer
