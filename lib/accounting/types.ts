@@ -1,4 +1,5 @@
 import type { accountMappingKeys } from '@/db/schema'
+import type { CallerContext } from '../authz/types'
 
 export type AccountMappingKey = (typeof accountMappingKeys)[number]
 
@@ -42,10 +43,12 @@ export interface AccountingService {
   // before writing anything (the invariant the schema comments in
   // db/schema/journal-entries.ts note is an application-layer
   // responsibility). Resolves each line's accountKey via account_mappings.
-  postJournalEntry(input: PostJournalEntryInput): Promise<PostJournalEntryResult>
+  // GL posting — owner/accountant only (RBAC T7), not branch_manager/staff.
+  postJournalEntry(context: CallerContext, input: PostJournalEntryInput): Promise<PostJournalEntryResult>
 
   // Debit inventory_asset (+ input_tax if any), credit accounts_payable.
   postSupplierInvoiceJournal(
+    context: CallerContext,
     tenantId: string,
     supplierInvoiceId: string
   ): Promise<PostJournalEntryResult>
@@ -54,6 +57,7 @@ export interface AccountingService {
   // supplier_invoices.status (unpaid/partially_paid/paid) from the sum of its
   // payments.
   postSupplierPaymentJournal(
+    context: CallerContext,
     tenantId: string,
     supplierPaymentId: string
   ): Promise<PostJournalEntryResult>
@@ -63,5 +67,9 @@ export interface AccountingService {
   // average cost per line (omitted if that comes to 0, e.g. a sale posted
   // before any purchase). Uses the cost as it stands *now*, not frozen at the
   // moment of sale — see docs/ARCHITECTURE.md for that simplification.
-  postSaleInvoiceJournal(tenantId: string, saleInvoiceId: string): Promise<PostJournalEntryResult>
+  postSaleInvoiceJournal(
+    context: CallerContext,
+    tenantId: string,
+    saleInvoiceId: string
+  ): Promise<PostJournalEntryResult>
 }

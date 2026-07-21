@@ -315,11 +315,67 @@ caught by review — caught by actually running the code):**
    `middleware` → `proxy`) — caught by the build itself failing with a clear
    message, not a guess in advance.
 
-**Not yet built** (see `ROADMAP.md` Phase 1 task list, T7/T8 remaining):
-wiring `assertRole`/`assertBranchAccess` into the 5 existing services
-(ledger, purchasing, warehouse, accounting, reporting) — they don't check
-authorization yet, this phase only built the auth/authz foundation itself —
-and an audit trail for denied access attempts.
+**T7/T8 — authorization wiring + audit trail (implemented, after Phase 1.5 +
+the HR expansion above)**
+
+Closes the two items left open when RBAC was first built: the foundation
+existed but nothing actually checked it yet.
+
+- **T7 — wired `assertRole`/`assertBranchAccess` into the 5 services named
+  in the original scope** (`lib/ledger`, `lib/purchasing`, `lib/warehouse`,
+  `lib/accounting`, `lib/reporting`) — every public method now takes a
+  `CallerContext` as its first parameter and checks role + (where
+  applicable) branch access before touching data. Deliberately scoped to
+  just these 5, matching the locked plan from `/plan-eng-review` — the many
+  services added since (products, marketing, customers, employees, leave,
+  gratuity, tasks, hr-notifications) are **not** wired yet; that's a
+  follow-up pass, not silently expanded scope.
+  - **Role decisions per service** (not arbitrary — mapped to what each
+    action actually is):
+    - `ledger`/`purchasing` (physical branch operations — recording a
+      sale, receiving stock): all 4 roles, gated by branch access.
+    - `purchasing.createPurchaseOrder`/`sendPurchaseOrder` (committing the
+      company to a purchase, a decision not a physical task): owner/
+      accountant/branch_manager — staff excluded, unlike receiving.
+    - `warehouse.postStockTransfer`: requires branch access to **both**
+      the source and destination branch — a branch_manager restricted to
+      one branch can't move stock into or out of a branch they don't
+      manage.
+    - `accounting` (GL posting): owner/accountant only — the one place
+      staff and branch_manager are both excluded, since posting financial
+      entries is a core accounting function, not a branch operation.
+    - `reporting.getBranch*`: owner/accountant/branch_manager (their own
+      branch only) — **staff excluded entirely**, the literal example
+      `TODOS.md`'s audit-trail item named ("staff can't see P&L").
+      `reporting.getCompany*`: owner/accountant only — a branch_manager
+      sees their own branch's report, never the company-wide rollup.
+  - Every one of the ~45 pre-existing call sites across the 5 services'
+    test files was updated to pass `SYSTEM_CONTEXT` (the existing bypass
+    identity for non-HTTP/test callers) — this preserves every prior
+    test's behavior unchanged while proving the signature change compiles
+    and runs. ~10 new RBAC-specific tests were added on top (one denial +
+    one allow case per service), not a rewrite of existing coverage.
+- **T8 — `authz_denials` audit table** + `assertRoleAudited`/
+  `assertBranchAccessAudited` wrapping `assertRole`/`assertBranchAccess`.
+  The wrapped versions are what every service actually calls; the
+  underlying `assertRole`/`assertBranchAccess` stay untouched, small,
+  synchronous, DB-free functions — `tests/authz/service.test.ts` asserts
+  on them directly with `expect(() => assertRole(...)).toThrow()`, which
+  needs a real synchronous throw (an async version would reject a promise
+  instead and silently pass that assertion). On denial, the wrapper writes
+  to `authz_denials` **fire-and-forget** (not awaited) — per the original
+  TODO's own mitigation note, this keeps audit logging off the hot
+  rejection path, and a logging failure is swallowed rather than ever
+  turning a correct denial into a silent allow.
+- **`postJournalEntryInTx`** (the low-level function `lib/gratuity` and
+  `lib/hr` already call directly for their own atomic postings) is
+  **untouched by T7 on purpose** — it's a building block other modules'
+  own authz-gated public methods call, not itself a public entry point.
+
+9 new RBAC-specific tests added across the 5 services (`authz_denials`
+itself has no dedicated test file — covered indirectly by every RBAC test
+above that exercises a real denial write). tsc/vitest/next build clean —
+132 tests across 23 files total.
 
 ## Product variants (Phase 1.5, module 1 of 6 — implemented)
 

@@ -4,6 +4,7 @@ import { createTestDb } from '../setup/db'
 import { seedTenantWithBranch } from '../setup/seed'
 import { createLedgerService } from '@/lib/ledger/service'
 import { saleInvoiceLines, inventoryMovements } from '@/db/schema'
+import { SYSTEM_CONTEXT } from '@/lib/authz/types'
 
 describe('LedgerService.recordSaleInvoice', () => {
   it('writes invoice + lines + movements + balance atomically', async () => {
@@ -11,7 +12,7 @@ describe('LedgerService.recordSaleInvoice', () => {
     const { tenant, physicalBranch } = await seedTenantWithBranch(db)
     const ledger = createLedgerService(db)
 
-    await ledger.recordInventoryMovement({
+    await ledger.recordInventoryMovement(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       branchId: physicalBranch.id,
       sku: 'SKU-1',
@@ -22,7 +23,7 @@ describe('LedgerService.recordSaleInvoice', () => {
       occurredAt: new Date(),
     })
 
-    const result = await ledger.recordSaleInvoice({
+    const result = await ledger.recordSaleInvoice(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       branchId: physicalBranch.id,
       sourceType: 'branch_pos',
@@ -43,7 +44,7 @@ describe('LedgerService.recordSaleInvoice', () => {
     expect(lines).toHaveLength(1)
     expect(lines[0].lineTotal).toBe('150.00')
 
-    const balance = await ledger.getInventoryBalance(tenant.id, physicalBranch.id, 'SKU-1')
+    const balance = await ledger.getInventoryBalance(SYSTEM_CONTEXT, tenant.id, physicalBranch.id, 'SKU-1')
     expect(balance).toBe(17)
   })
 
@@ -62,12 +63,12 @@ describe('LedgerService.recordSaleInvoice', () => {
       lines: [{ sku: 'SKU-2', productName: 'Test Product 2', quantity: 1, unitPrice: 30 }],
     }
 
-    const first = await ledger.recordSaleInvoice(input)
+    const first = await ledger.recordSaleInvoice(SYSTEM_CONTEXT, input)
     expect(first.status).toBe('accepted')
 
     // Simulates the PWA retrying a sync call after a timeout that had actually
     // succeeded server-side.
-    const second = await ledger.recordSaleInvoice(input)
+    const second = await ledger.recordSaleInvoice(SYSTEM_CONTEXT, input)
     expect(second.status).toBe('duplicate')
     expect(second.invoiceId).toBe(first.invoiceId)
 
@@ -76,5 +77,39 @@ describe('LedgerService.recordSaleInvoice', () => {
       .from(inventoryMovements)
       .where(eq(inventoryMovements.saleInvoiceId, first.invoiceId!))
     expect(movements).toHaveLength(1)
+  })
+})
+
+describe('LedgerService — RBAC', () => {
+  it('rejects a branch_manager recording a sale at a branch outside their access', async () => {
+    const db = await createTestDb()
+    const { tenant, physicalBranch } = await seedTenantWithBranch(db)
+    const ledger = createLedgerService(db)
+    const outsider = {
+      userId: 'user-1',
+      role: 'branch_manager' as const,
+      branchAccess: { type: 'list' as const, branchIds: ['some-other-branch'] },
+    }
+
+    await expect(
+      ledger.recordSaleInvoice(outsider, {
+        tenantId: tenant.id,
+        branchId: physicalBranch.id,
+        sourceType: 'branch_pos',
+        idempotencyKey: 'rbac-invoice-1',
+        occurredAt: new Date(),
+        invoiceNumber: 'INV-RBAC-1',
+        lines: [{ sku: 'SKU-1', productName: 'Test Product', quantity: 1, unitPrice: 10 }],
+      })
+    ).rejects.toThrow('no access to branch')
+  })
+
+  it('allows SYSTEM_CONTEXT unconditionally (webhook/cron path)', async () => {
+    const db = await createTestDb()
+    const { tenant, physicalBranch } = await seedTenantWithBranch(db)
+    const ledger = createLedgerService(db)
+
+    const balance = await ledger.getInventoryBalance(SYSTEM_CONTEXT, tenant.id, physicalBranch.id, 'SKU-1')
+    expect(balance).toBe(0)
   })
 })

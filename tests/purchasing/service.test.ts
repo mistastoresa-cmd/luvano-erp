@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm'
 import { createTestDb } from '../setup/db'
 import { seedTenantWithBranch } from '../setup/seed'
 import { createPurchasingService } from '@/lib/purchasing/service'
+import { SYSTEM_CONTEXT } from '@/lib/authz/types'
 import { suppliers, goodsReceipts, goodsReceiptLines } from '@/db/schema'
 import { readInventoryBalance } from '@/lib/ledger/balance'
 
@@ -26,7 +27,7 @@ describe('PurchasingService.postGoodsReceipt', () => {
     const { receipt, line } = await seedReceipt(db, tenant.id, physicalBranch.id)
     const service = createPurchasingService(db)
 
-    const result = await service.postGoodsReceipt(tenant.id, receipt.id)
+    const result = await service.postGoodsReceipt(SYSTEM_CONTEXT, tenant.id, receipt.id)
 
     expect(result.lines).toHaveLength(1)
     expect(result.lines[0].status).toBe('accepted')
@@ -54,8 +55,8 @@ describe('PurchasingService.postGoodsReceipt', () => {
     const { receipt } = await seedReceipt(db, tenant.id, physicalBranch.id)
     const service = createPurchasingService(db)
 
-    await service.postGoodsReceipt(tenant.id, receipt.id)
-    const second = await service.postGoodsReceipt(tenant.id, receipt.id)
+    await service.postGoodsReceipt(SYSTEM_CONTEXT, tenant.id, receipt.id)
+    const second = await service.postGoodsReceipt(SYSTEM_CONTEXT, tenant.id, receipt.id)
 
     expect(second.lines[0].status).toBe('duplicate')
     const balance = await readInventoryBalance(db, tenant.id, physicalBranch.id, 'SKU-1')
@@ -75,7 +76,7 @@ describe('PurchasingService — full PO lifecycle', () => {
     const supplier = await seedSupplier(db, tenant.id)
     const service = createPurchasingService(db)
 
-    const { purchaseOrderId } = await service.createPurchaseOrder({
+    const { purchaseOrderId } = await service.createPurchaseOrder(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       branchId: physicalBranch.id,
       supplierId: supplier.id,
@@ -93,7 +94,7 @@ describe('PurchasingService — full PO lifecycle', () => {
     const supplier = await seedSupplier(db, tenant.id)
     const service = createPurchasingService(db)
 
-    const { purchaseOrderId } = await service.createPurchaseOrder({
+    const { purchaseOrderId } = await service.createPurchaseOrder(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       branchId: physicalBranch.id,
       supplierId: supplier.id,
@@ -102,8 +103,8 @@ describe('PurchasingService — full PO lifecycle', () => {
       lines: [{ sku: 'SKU-1', productName: 'Widget', quantityOrdered: 10, unitCost: 20 }],
     })
 
-    await service.sendPurchaseOrder(tenant.id, purchaseOrderId)
-    await expect(service.sendPurchaseOrder(tenant.id, purchaseOrderId)).rejects.toThrow('can only send a draft PO')
+    await service.sendPurchaseOrder(SYSTEM_CONTEXT, tenant.id, purchaseOrderId)
+    await expect(service.sendPurchaseOrder(SYSTEM_CONTEXT, tenant.id, purchaseOrderId)).rejects.toThrow('can only send a draft PO')
   })
 
   it('receiving the full ordered quantity in one shipment marks the PO received and posts inventory', async () => {
@@ -112,7 +113,7 @@ describe('PurchasingService — full PO lifecycle', () => {
     const supplier = await seedSupplier(db, tenant.id)
     const service = createPurchasingService(db)
 
-    const { purchaseOrderId } = await service.createPurchaseOrder({
+    const { purchaseOrderId } = await service.createPurchaseOrder(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       branchId: physicalBranch.id,
       supplierId: supplier.id,
@@ -120,9 +121,9 @@ describe('PurchasingService — full PO lifecycle', () => {
       orderDate: '2026-07-20',
       lines: [{ sku: 'SKU-1', productName: 'Widget', quantityOrdered: 10, unitCost: 20 }],
     })
-    await service.sendPurchaseOrder(tenant.id, purchaseOrderId)
+    await service.sendPurchaseOrder(SYSTEM_CONTEXT, tenant.id, purchaseOrderId)
 
-    const result = await service.receivePurchaseOrder({
+    const result = await service.receivePurchaseOrder(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       purchaseOrderId,
       receiptNumber: 'GR-1',
@@ -141,7 +142,7 @@ describe('PurchasingService — full PO lifecycle', () => {
     const supplier = await seedSupplier(db, tenant.id)
     const service = createPurchasingService(db)
 
-    const { purchaseOrderId } = await service.createPurchaseOrder({
+    const { purchaseOrderId } = await service.createPurchaseOrder(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       branchId: physicalBranch.id,
       supplierId: supplier.id,
@@ -149,9 +150,9 @@ describe('PurchasingService — full PO lifecycle', () => {
       orderDate: '2026-07-20',
       lines: [{ sku: 'SKU-1', productName: 'Widget', quantityOrdered: 10, unitCost: 20 }],
     })
-    await service.sendPurchaseOrder(tenant.id, purchaseOrderId)
+    await service.sendPurchaseOrder(SYSTEM_CONTEXT, tenant.id, purchaseOrderId)
 
-    const first = await service.receivePurchaseOrder({
+    const first = await service.receivePurchaseOrder(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       purchaseOrderId,
       receiptNumber: 'GR-1',
@@ -160,7 +161,7 @@ describe('PurchasingService — full PO lifecycle', () => {
     })
     expect(first.poStatus).toBe('partially_received')
 
-    const second = await service.receivePurchaseOrder({
+    const second = await service.receivePurchaseOrder(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       purchaseOrderId,
       receiptNumber: 'GR-2',
@@ -179,7 +180,7 @@ describe('PurchasingService — full PO lifecycle', () => {
     const supplier = await seedSupplier(db, tenant.id)
     const service = createPurchasingService(db)
 
-    const { purchaseOrderId } = await service.createPurchaseOrder({
+    const { purchaseOrderId } = await service.createPurchaseOrder(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       branchId: physicalBranch.id,
       supplierId: supplier.id,
@@ -189,7 +190,7 @@ describe('PurchasingService — full PO lifecycle', () => {
     })
 
     await expect(
-      service.receivePurchaseOrder({
+      service.receivePurchaseOrder(SYSTEM_CONTEXT, {
         tenantId: tenant.id,
         purchaseOrderId,
         receiptNumber: 'GR-1',
@@ -205,7 +206,7 @@ describe('PurchasingService — full PO lifecycle', () => {
     const supplier = await seedSupplier(db, tenant.id)
     const service = createPurchasingService(db)
 
-    const { purchaseOrderId } = await service.createPurchaseOrder({
+    const { purchaseOrderId } = await service.createPurchaseOrder(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       branchId: physicalBranch.id,
       supplierId: supplier.id,
@@ -213,7 +214,7 @@ describe('PurchasingService — full PO lifecycle', () => {
       orderDate: '2026-07-20',
       lines: [{ sku: 'SKU-1', productName: 'Widget', quantityOrdered: 10, unitCost: 20 }],
     })
-    await service.receivePurchaseOrder({
+    await service.receivePurchaseOrder(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       purchaseOrderId,
       receiptNumber: 'GR-1',
@@ -222,7 +223,7 @@ describe('PurchasingService — full PO lifecycle', () => {
     })
 
     await expect(
-      service.receivePurchaseOrder({
+      service.receivePurchaseOrder(SYSTEM_CONTEXT, {
         tenantId: tenant.id,
         purchaseOrderId,
         receiptNumber: 'GR-2',
@@ -230,5 +231,57 @@ describe('PurchasingService — full PO lifecycle', () => {
         lines: [{ sku: 'SKU-1', quantityReceived: 1, unitCost: 20 }],
       })
     ).rejects.toThrow('cannot receive against it')
+  })
+})
+
+describe('PurchasingService — RBAC', () => {
+  it('rejects staff creating a purchase order (purchasing is a commitment decision, not a physical-receiving task)', async () => {
+    const db = await createTestDb()
+    const { tenant, physicalBranch } = await seedTenantWithBranch(db)
+    const [supplier] = await db.insert(suppliers).values({ tenantId: tenant.id, name: 'S1' }).returning()
+    const service = createPurchasingService(db)
+    const staff = { userId: 'user-1', role: 'staff' as const, branchAccess: { type: 'all' as const } }
+
+    await expect(
+      service.createPurchaseOrder(staff, {
+        tenantId: tenant.id,
+        branchId: physicalBranch.id,
+        supplierId: supplier.id,
+        poNumber: 'PO-RBAC-1',
+        orderDate: '2026-07-20',
+        lines: [{ sku: 'SKU-1', productName: 'Widget', quantityOrdered: 10, unitCost: 20 }],
+      })
+    ).rejects.toThrow('role "staff"')
+  })
+
+  it('allows staff to physically receive against a PO at their own branch', async () => {
+    const db = await createTestDb()
+    const { tenant, physicalBranch } = await seedTenantWithBranch(db)
+    const [supplier] = await db.insert(suppliers).values({ tenantId: tenant.id, name: 'S1' }).returning()
+    const service = createPurchasingService(db)
+    const staff = {
+      userId: 'user-1',
+      role: 'staff' as const,
+      branchAccess: { type: 'list' as const, branchIds: [physicalBranch.id] },
+    }
+
+    const { purchaseOrderId } = await service.createPurchaseOrder(SYSTEM_CONTEXT, {
+      tenantId: tenant.id,
+      branchId: physicalBranch.id,
+      supplierId: supplier.id,
+      poNumber: 'PO-RBAC-2',
+      orderDate: '2026-07-20',
+      lines: [{ sku: 'SKU-1', productName: 'Widget', quantityOrdered: 10, unitCost: 20 }],
+    })
+
+    const result = await service.receivePurchaseOrder(staff, {
+      tenantId: tenant.id,
+      purchaseOrderId,
+      receiptNumber: 'GR-RBAC-1',
+      receivedDate: '2026-07-21',
+      lines: [{ sku: 'SKU-1', quantityReceived: 10, unitCost: 20 }],
+    })
+
+    expect(result.poStatus).toBe('received')
   })
 })

@@ -5,6 +5,7 @@ import { createAccountingService } from '@/lib/accounting/service'
 import { createReportingService } from '@/lib/reporting/service'
 import { chartOfAccounts, accountMappings, saleInvoices, saleInvoiceLines, suppliers, supplierInvoices } from '@/db/schema'
 import type { AccountMappingKey } from '@/lib/accounting/types'
+import { SYSTEM_CONTEXT } from '@/lib/authz/types'
 
 async function seedMappings(db: Awaited<ReturnType<typeof createTestDb>>, tenantId: string) {
   const keys: { key: AccountMappingKey; code: string; name: string; type: 'asset' | 'liability' | 'revenue' | 'expense' }[] = [
@@ -46,7 +47,7 @@ describe('ReportingService.getBranchProfitAndLoss', () => {
         occurredAt: new Date('2026-07-10'),
       })
       .returning()
-    await accounting.postSaleInvoiceJournal(tenant.id, invoiceA.id)
+    await accounting.postSaleInvoiceJournal(SYSTEM_CONTEXT, tenant.id, invoiceA.id)
 
     // A sale at the online branch: 500 revenue — must not leak into the
     // physical branch's report.
@@ -63,9 +64,10 @@ describe('ReportingService.getBranchProfitAndLoss', () => {
         occurredAt: new Date('2026-07-11'),
       })
       .returning()
-    await accounting.postSaleInvoiceJournal(tenant.id, invoiceB.id)
+    await accounting.postSaleInvoiceJournal(SYSTEM_CONTEXT, tenant.id, invoiceB.id)
 
     const report = await reporting.getBranchProfitAndLoss(
+      SYSTEM_CONTEXT,
       tenant.id,
       physicalBranch.id,
       new Date('2026-07-01'),
@@ -102,9 +104,10 @@ describe('ReportingService.getBranchProfitAndLoss', () => {
         occurredAt: new Date('2026-07-15'),
       })
       .returning()
-    await accounting.postSaleInvoiceJournal(tenant.id, invoice.id)
+    await accounting.postSaleInvoiceJournal(SYSTEM_CONTEXT, tenant.id, invoice.id)
 
     const report = await reporting.getBranchProfitAndLoss(
+      SYSTEM_CONTEXT,
       tenant.id,
       physicalBranch.id,
       new Date('2026-07-01'),
@@ -139,9 +142,10 @@ describe('ReportingService.getBranchBalanceSheet', () => {
         occurredAt: new Date('2026-07-05'),
       })
       .returning()
-    await accounting.postSaleInvoiceJournal(tenant.id, invoice.id)
+    await accounting.postSaleInvoiceJournal(SYSTEM_CONTEXT, tenant.id, invoice.id)
 
-    const sheet = await reporting.getBranchBalanceSheet(tenant.id, physicalBranch.id, new Date('2026-07-31'))
+    const sheet = await reporting.getBranchBalanceSheet(SYSTEM_CONTEXT,
+      tenant.id, physicalBranch.id, new Date('2026-07-31'))
 
     const cashLine = sheet.assetLines.find((l) => l.accountCode === '1000')
     expect(cashLine?.amount).toBe(120)
@@ -168,9 +172,10 @@ describe('ReportingService.getBranchBalanceSheet', () => {
         total: '400.00',
       })
       .returning()
-    await accounting.postSupplierInvoiceJournal(tenant.id, invoice.id)
+    await accounting.postSupplierInvoiceJournal(SYSTEM_CONTEXT, tenant.id, invoice.id)
 
-    const sheet = await reporting.getBranchBalanceSheet(tenant.id, physicalBranch.id, new Date('2026-07-31'))
+    const sheet = await reporting.getBranchBalanceSheet(SYSTEM_CONTEXT,
+      tenant.id, physicalBranch.id, new Date('2026-07-31'))
 
     const apLine = sheet.liabilityLines.find((l) => l.accountCode === '2000')
     expect(apLine?.amount).toBe(400)
@@ -199,7 +204,7 @@ describe('ReportingService.getCompanyProfitAndLoss', () => {
         occurredAt: new Date('2026-07-10'),
       })
       .returning()
-    await accounting.postSaleInvoiceJournal(tenant.id, invoiceA.id)
+    await accounting.postSaleInvoiceJournal(SYSTEM_CONTEXT, tenant.id, invoiceA.id)
 
     const [invoiceB] = await db
       .insert(saleInvoices)
@@ -214,9 +219,10 @@ describe('ReportingService.getCompanyProfitAndLoss', () => {
         occurredAt: new Date('2026-07-11'),
       })
       .returning()
-    await accounting.postSaleInvoiceJournal(tenant.id, invoiceB.id)
+    await accounting.postSaleInvoiceJournal(SYSTEM_CONTEXT, tenant.id, invoiceB.id)
 
     const report = await reporting.getCompanyProfitAndLoss(
+      SYSTEM_CONTEXT,
       tenant.id,
       new Date('2026-07-01'),
       new Date('2026-07-31')
@@ -248,7 +254,7 @@ describe('ReportingService.getCompanyProfitAndLoss', () => {
         occurredAt: new Date('2026-07-10'),
       })
       .returning()
-    await accounting.postSaleInvoiceJournal(tenant.id, invoice.id)
+    await accounting.postSaleInvoiceJournal(SYSTEM_CONTEXT, tenant.id, invoice.id)
 
     const [otherInvoice] = await db
       .insert(saleInvoices)
@@ -263,9 +269,10 @@ describe('ReportingService.getCompanyProfitAndLoss', () => {
         occurredAt: new Date('2026-07-10'),
       })
       .returning()
-    await accounting.postSaleInvoiceJournal(otherTenant.id, otherInvoice.id)
+    await accounting.postSaleInvoiceJournal(SYSTEM_CONTEXT, otherTenant.id, otherInvoice.id)
 
     const report = await reporting.getCompanyProfitAndLoss(
+      SYSTEM_CONTEXT,
       tenant.id,
       new Date('2026-07-01'),
       new Date('2026-07-31')
@@ -296,7 +303,7 @@ describe('ReportingService.getCompanyBalanceSheet', () => {
         occurredAt: new Date('2026-07-05'),
       })
       .returning()
-    await accounting.postSaleInvoiceJournal(tenant.id, invoiceA.id)
+    await accounting.postSaleInvoiceJournal(SYSTEM_CONTEXT, tenant.id, invoiceA.id)
 
     const [invoiceB] = await db
       .insert(saleInvoices)
@@ -311,12 +318,58 @@ describe('ReportingService.getCompanyBalanceSheet', () => {
         occurredAt: new Date('2026-07-06'),
       })
       .returning()
-    await accounting.postSaleInvoiceJournal(tenant.id, invoiceB.id)
+    await accounting.postSaleInvoiceJournal(SYSTEM_CONTEXT, tenant.id, invoiceB.id)
 
-    const sheet = await reporting.getCompanyBalanceSheet(tenant.id, new Date('2026-07-31'))
+    const sheet = await reporting.getCompanyBalanceSheet(SYSTEM_CONTEXT,
+      tenant.id, new Date('2026-07-31'))
 
     const cashLine = sheet.assetLines.find((l) => l.accountCode === '1000')
     expect(cashLine?.amount).toBe(200)
     expect(sheet.totalAssets).toBe(200)
+  })
+})
+
+describe('ReportingService — RBAC', () => {
+  it('rejects staff viewing a branch P&L (staff has no financial visibility)', async () => {
+    const db = await createTestDb()
+    const { tenant, physicalBranch } = await seedTenantWithBranch(db)
+    await seedMappings(db, tenant.id)
+    const reporting = createReportingService(db)
+    const staff = { userId: 'user-1', role: 'staff' as const, branchAccess: { type: 'all' as const } }
+
+    await expect(
+      reporting.getBranchProfitAndLoss(
+        staff,
+        tenant.id,
+        physicalBranch.id,
+        new Date('2026-07-01'),
+        new Date('2026-07-31')
+      )
+    ).rejects.toThrow('role "staff"')
+  })
+
+  it('allows a branch_manager to view their own branch P&L but rejects the company-wide rollup', async () => {
+    const db = await createTestDb()
+    const { tenant, physicalBranch } = await seedTenantWithBranch(db)
+    await seedMappings(db, tenant.id)
+    const reporting = createReportingService(db)
+    const branchManager = {
+      userId: 'user-1',
+      role: 'branch_manager' as const,
+      branchAccess: { type: 'list' as const, branchIds: [physicalBranch.id] },
+    }
+
+    const report = await reporting.getBranchProfitAndLoss(
+      branchManager,
+      tenant.id,
+      physicalBranch.id,
+      new Date('2026-07-01'),
+      new Date('2026-07-31')
+    )
+    expect(report.totalRevenue).toBe(0)
+
+    await expect(
+      reporting.getCompanyProfitAndLoss(branchManager, tenant.id, new Date('2026-07-01'), new Date('2026-07-31'))
+    ).rejects.toThrow('role "branch_manager"')
   })
 })

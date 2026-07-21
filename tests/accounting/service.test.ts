@@ -17,6 +17,7 @@ import {
   goodsReceiptLines,
 } from '@/db/schema'
 import type { AccountMappingKey } from '@/lib/accounting/types'
+import { SYSTEM_CONTEXT } from '@/lib/authz/types'
 
 async function seedAccountMappings(db: Awaited<ReturnType<typeof createTestDb>>, tenantId: string) {
   const keys: { key: AccountMappingKey; code: string; name: string; type: 'asset' | 'liability' | 'revenue' | 'expense' }[] = [
@@ -61,7 +62,7 @@ describe('AccountingService.postSupplierInvoiceJournal', () => {
       .returning()
 
     const accounting = createAccountingService(db)
-    const result = await accounting.postSupplierInvoiceJournal(tenant.id, invoice.id)
+    const result = await accounting.postSupplierInvoiceJournal(SYSTEM_CONTEXT, tenant.id, invoice.id)
     expect(result.status).toBe('accepted')
 
     const lines = await db
@@ -96,8 +97,8 @@ describe('AccountingService.postSupplierInvoiceJournal', () => {
       .returning()
 
     const accounting = createAccountingService(db)
-    const first = await accounting.postSupplierInvoiceJournal(tenant.id, invoice.id)
-    const second = await accounting.postSupplierInvoiceJournal(tenant.id, invoice.id)
+    const first = await accounting.postSupplierInvoiceJournal(SYSTEM_CONTEXT, tenant.id, invoice.id)
+    const second = await accounting.postSupplierInvoiceJournal(SYSTEM_CONTEXT, tenant.id, invoice.id)
 
     expect(second.status).toBe('duplicate')
     expect(second.journalEntryId).toBe(first.journalEntryId)
@@ -121,7 +122,7 @@ describe('AccountingService.postSupplierInvoiceJournal', () => {
       .returning()
 
     const accounting = createAccountingService(db)
-    await expect(accounting.postSupplierInvoiceJournal(tenant.id, invoice.id)).rejects.toThrow(
+    await expect(accounting.postSupplierInvoiceJournal(SYSTEM_CONTEXT, tenant.id, invoice.id)).rejects.toThrow(
       /No account_mappings row/
     )
   })
@@ -146,7 +147,7 @@ describe('AccountingService.postSupplierPaymentJournal', () => {
       .returning()
 
     const accounting = createAccountingService(db)
-    await accounting.postSupplierInvoiceJournal(tenant.id, invoice.id)
+    await accounting.postSupplierInvoiceJournal(SYSTEM_CONTEXT, tenant.id, invoice.id)
 
     const [payment1] = await db
       .insert(supplierPayments)
@@ -159,7 +160,7 @@ describe('AccountingService.postSupplierPaymentJournal', () => {
         method: 'bank_transfer',
       })
       .returning()
-    await accounting.postSupplierPaymentJournal(tenant.id, payment1.id)
+    await accounting.postSupplierPaymentJournal(SYSTEM_CONTEXT, tenant.id, payment1.id)
 
     let [updated] = await db.select().from(supplierInvoices).where(eq(supplierInvoices.id, invoice.id))
     expect(updated.status).toBe('partially_paid')
@@ -175,7 +176,7 @@ describe('AccountingService.postSupplierPaymentJournal', () => {
         method: 'bank_transfer',
       })
       .returning()
-    await accounting.postSupplierPaymentJournal(tenant.id, payment2.id)
+    await accounting.postSupplierPaymentJournal(SYSTEM_CONTEXT, tenant.id, payment2.id)
 
     ;[updated] = await db.select().from(supplierInvoices).where(eq(supplierInvoices.id, invoice.id))
     expect(updated.status).toBe('paid')
@@ -204,7 +205,7 @@ describe('AccountingService.postSaleInvoiceJournal', () => {
       .returning()
 
     const accounting = createAccountingService(db)
-    const result = await accounting.postSaleInvoiceJournal(tenant.id, invoice.id)
+    const result = await accounting.postSaleInvoiceJournal(SYSTEM_CONTEXT, tenant.id, invoice.id)
 
     const lines = await db
       .select()
@@ -235,7 +236,7 @@ describe('AccountingService.postSaleInvoiceJournal', () => {
     await db
       .insert(goodsReceiptLines)
       .values({ goodsReceiptId: receipt.id, sku: 'SKU-1', quantityReceived: 20, unitCost: '15.00' })
-    await purchasing.postGoodsReceipt(tenant.id, receipt.id)
+    await purchasing.postGoodsReceipt(SYSTEM_CONTEXT, tenant.id, receipt.id)
 
     const [invoice] = await db
       .insert(saleInvoices)
@@ -261,7 +262,7 @@ describe('AccountingService.postSaleInvoiceJournal', () => {
         lineTotal: '100.00',
       })
 
-    const result = await accounting.postSaleInvoiceJournal(tenant.id, invoice.id)
+    const result = await accounting.postSaleInvoiceJournal(SYSTEM_CONTEXT, tenant.id, invoice.id)
 
     const lines = await db
       .select()
@@ -287,7 +288,7 @@ describe('AccountingService.postJournalEntry', () => {
     const accounting = createAccountingService(db)
 
     await expect(
-      accounting.postJournalEntry({
+      accounting.postJournalEntry(SYSTEM_CONTEXT, {
         tenantId: tenant.id,
         entryDate: new Date(),
         sourceType: 'manual',
@@ -297,5 +298,50 @@ describe('AccountingService.postJournalEntry', () => {
         ],
       })
     ).rejects.toThrow(/Unbalanced journal entry/)
+  })
+})
+
+describe('AccountingService — RBAC', () => {
+  it('rejects a branch_manager posting a journal entry (GL posting is owner/accountant only)', async () => {
+    const db = await createTestDb()
+    const { tenant } = await seedTenantWithBranch(db)
+    await seedAccountMappings(db, tenant.id)
+    const accounting = createAccountingService(db)
+    const branchManager = { userId: 'user-1', role: 'branch_manager' as const, branchAccess: { type: 'all' as const } }
+
+    await expect(
+      accounting.postJournalEntry(branchManager, {
+        tenantId: tenant.id,
+        entryDate: new Date(),
+        sourceType: 'manual',
+        lines: [
+          { accountKey: 'cash', debit: 100 },
+          { accountKey: 'sales_revenue', credit: 100 },
+        ],
+      })
+    ).rejects.toThrow('role "branch_manager"')
+  })
+
+  it('allows an accountant to post a supplier invoice journal', async () => {
+    const db = await createTestDb()
+    const { tenant } = await seedTenantWithBranch(db)
+    await seedAccountMappings(db, tenant.id)
+    const [supplier] = await db.insert(suppliers).values({ tenantId: tenant.id, name: 'S1' }).returning()
+    const [invoice] = await db
+      .insert(supplierInvoices)
+      .values({
+        tenantId: tenant.id,
+        supplierId: supplier.id,
+        invoiceNumber: 'SINV-RBAC-1',
+        invoiceDate: '2026-07-20',
+        subtotal: '100.00',
+        total: '100.00',
+      })
+      .returning()
+
+    const accounting = createAccountingService(db)
+    const accountant = { userId: 'user-1', role: 'accountant' as const, branchAccess: { type: 'all' as const } }
+    const result = await accounting.postSupplierInvoiceJournal(accountant, tenant.id, invoice.id)
+    expect(result.status).toBe('accepted')
   })
 })

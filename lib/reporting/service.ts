@@ -1,6 +1,8 @@
 import { eq, and, gte, lte, sql } from 'drizzle-orm'
 import { journalEntries, journalEntryLines, chartOfAccounts } from '@/db/schema'
 import type { Db } from '@/db/client'
+import { assertRoleAudited, assertBranchAccessAudited } from '../authz/service'
+import type { CallerContext } from '../authz/types'
 import type {
   ReportingService,
   BranchProfitAndLoss,
@@ -72,14 +74,23 @@ function sumLines(lines: AccountLineAmount[]): number {
   return Math.round(lines.reduce((acc, l) => acc + l.amount, 0) * 100) / 100
 }
 
+// P&L/balance sheet visibility — staff excluded entirely (this is the exact
+// example TODOS.md's audit-trail item names: "staff can't see P&L"). Company-
+// wide rollups are further restricted below to owner/accountant only.
+const BRANCH_REPORT_ROLES = ['owner', 'accountant', 'branch_manager'] as const
+const COMPANY_REPORT_ROLES = ['owner', 'accountant'] as const
+
 export function createReportingService(db: Db): ReportingService {
   return {
     async getBranchProfitAndLoss(
+      context: CallerContext,
       tenantId: string,
       branchId: string,
       dateFrom: Date,
       dateTo: Date
     ): Promise<BranchProfitAndLoss> {
+      assertRoleAudited(db, tenantId, context, [...BRANCH_REPORT_ROLES])
+      assertBranchAccessAudited(db, tenantId, context, branchId)
       const rows = await aggregateByAccount(db, tenantId, branchId, dateFrom, dateTo)
 
       const revenueLines = rows.filter((r) => r.accountType === 'revenue').map((r) => toLine(r, 'credit'))
@@ -100,10 +111,13 @@ export function createReportingService(db: Db): ReportingService {
     },
 
     async getBranchBalanceSheet(
+      context: CallerContext,
       tenantId: string,
       branchId: string,
       asOfDate: Date
     ): Promise<BranchBalanceSheet> {
+      assertRoleAudited(db, tenantId, context, [...BRANCH_REPORT_ROLES])
+      assertBranchAccessAudited(db, tenantId, context, branchId)
       const rows = await aggregateByAccount(db, tenantId, branchId, null, asOfDate)
 
       const assetLines = rows.filter((r) => r.accountType === 'asset').map((r) => toLine(r, 'debit'))
@@ -125,10 +139,12 @@ export function createReportingService(db: Db): ReportingService {
     },
 
     async getCompanyProfitAndLoss(
+      context: CallerContext,
       tenantId: string,
       dateFrom: Date,
       dateTo: Date
     ): Promise<CompanyProfitAndLoss> {
+      assertRoleAudited(db, tenantId, context, [...COMPANY_REPORT_ROLES])
       const rows = await aggregateByAccount(db, tenantId, undefined, dateFrom, dateTo)
 
       const revenueLines = rows.filter((r) => r.accountType === 'revenue').map((r) => toLine(r, 'credit'))
@@ -147,7 +163,12 @@ export function createReportingService(db: Db): ReportingService {
       }
     },
 
-    async getCompanyBalanceSheet(tenantId: string, asOfDate: Date): Promise<CompanyBalanceSheet> {
+    async getCompanyBalanceSheet(
+      context: CallerContext,
+      tenantId: string,
+      asOfDate: Date
+    ): Promise<CompanyBalanceSheet> {
+      assertRoleAudited(db, tenantId, context, [...COMPANY_REPORT_ROLES])
       const rows = await aggregateByAccount(db, tenantId, undefined, null, asOfDate)
 
       const assetLines = rows.filter((r) => r.accountType === 'asset').map((r) => toLine(r, 'debit'))

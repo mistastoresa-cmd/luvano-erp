@@ -9,6 +9,8 @@ import {
 import type { Db, Tx } from '@/db/client'
 import { applyInventoryDeltaWithCost } from '../ledger/balance'
 import { raiseOversellAlert } from '../ledger/alerts'
+import { assertRoleAudited, assertBranchAccessAudited } from '../authz/service'
+import type { CallerContext } from '../authz/types'
 import type {
   PurchasingService,
   PostGoodsReceiptResult,
@@ -113,16 +115,35 @@ async function postGoodsReceiptInTx(
   return { goodsReceiptId, lines: results }
 }
 
+const RECEIVING_ROLES = ['owner', 'accountant', 'branch_manager', 'staff'] as const
+const PURCHASING_DECISION_ROLES = ['owner', 'accountant', 'branch_manager'] as const
+
 export function createPurchasingService(db: Db): PurchasingService {
   return {
     async postGoodsReceipt(
+      context: CallerContext,
       tenantId: string,
       goodsReceiptId: string
     ): Promise<PostGoodsReceiptResult> {
+      assertRoleAudited(db, tenantId, context, [...RECEIVING_ROLES])
+      const [receipt] = await db
+        .select({ branchId: goodsReceipts.branchId })
+        .from(goodsReceipts)
+        .where(and(eq(goodsReceipts.id, goodsReceiptId), eq(goodsReceipts.tenantId, tenantId)))
+        .limit(1)
+      if (!receipt) throw new Error(`goods_receipt ${goodsReceiptId} not found for tenant`)
+      assertBranchAccessAudited(db, tenantId, context, receipt.branchId)
+
       return db.transaction((tx) => postGoodsReceiptInTx(tx, tenantId, goodsReceiptId))
     },
 
-    async createPurchaseOrder(input: CreatePurchaseOrderInput): Promise<CreatePurchaseOrderResult> {
+    async createPurchaseOrder(
+      context: CallerContext,
+      input: CreatePurchaseOrderInput
+    ): Promise<CreatePurchaseOrderResult> {
+      assertRoleAudited(db, input.tenantId, context, [...PURCHASING_DECISION_ROLES])
+      assertBranchAccessAudited(db, input.tenantId, context, input.branchId)
+
       return db.transaction(async (tx) => {
         const [po] = await tx
           .insert(purchaseOrders)
@@ -151,13 +172,19 @@ export function createPurchasingService(db: Db): PurchasingService {
       })
     },
 
-    async sendPurchaseOrder(tenantId: string, purchaseOrderId: string): Promise<void> {
+    async sendPurchaseOrder(
+      context: CallerContext,
+      tenantId: string,
+      purchaseOrderId: string
+    ): Promise<void> {
+      assertRoleAudited(db, tenantId, context, [...PURCHASING_DECISION_ROLES])
       const [po] = await db
         .select()
         .from(purchaseOrders)
         .where(and(eq(purchaseOrders.id, purchaseOrderId), eq(purchaseOrders.tenantId, tenantId)))
         .limit(1)
       if (!po) throw new Error(`purchase_order ${purchaseOrderId} not found for tenant`)
+      assertBranchAccessAudited(db, tenantId, context, po.branchId)
       if (po.status !== 'draft') {
         throw new Error(`purchase_order ${purchaseOrderId} is ${po.status}, can only send a draft PO`)
       }
@@ -165,7 +192,12 @@ export function createPurchasingService(db: Db): PurchasingService {
       await db.update(purchaseOrders).set({ status: 'sent' }).where(eq(purchaseOrders.id, purchaseOrderId))
     },
 
-    async receivePurchaseOrder(input: ReceivePurchaseOrderInput): Promise<ReceivePurchaseOrderResult> {
+    async receivePurchaseOrder(
+      context: CallerContext,
+      input: ReceivePurchaseOrderInput
+    ): Promise<ReceivePurchaseOrderResult> {
+      assertRoleAudited(db, input.tenantId, context, [...RECEIVING_ROLES])
+
       return db.transaction(async (tx) => {
         const { tenantId, purchaseOrderId } = input
 
@@ -175,6 +207,7 @@ export function createPurchasingService(db: Db): PurchasingService {
           .where(and(eq(purchaseOrders.id, purchaseOrderId), eq(purchaseOrders.tenantId, tenantId)))
           .limit(1)
         if (!po) throw new Error(`purchase_order ${purchaseOrderId} not found for tenant`)
+        assertBranchAccessAudited(db, tenantId, context, po.branchId)
         if (po.status === 'received' || po.status === 'cancelled') {
           throw new Error(`purchase_order ${purchaseOrderId} is ${po.status}, cannot receive against it`)
         }

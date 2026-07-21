@@ -10,12 +10,19 @@ import {
 } from '@/db/schema'
 import type { Db, Tx } from '@/db/client'
 import { readInventoryCost } from '../ledger/balance'
+import { assertRoleAudited, assertBranchAccessAudited } from '../authz/service'
+import type { CallerContext } from '../authz/types'
 import type {
   AccountingService,
   AccountMappingKey,
   PostJournalEntryInput,
   PostJournalEntryResult,
 } from './types'
+
+// GL posting is a core accounting function — owner/accountant only, unlike
+// the day-to-day branch operations lib/ledger and lib/purchasing open to
+// branch_manager/staff (RBAC T7).
+const POSTING_ROLES = ['owner', 'accountant'] as const
 
 async function resolveAccountId(tx: Tx, tenantId: string, key: AccountMappingKey): Promise<string> {
   const [mapping] = await tx
@@ -105,11 +112,17 @@ export async function postJournalEntryInTx(
 
 export function createAccountingService(db: Db): AccountingService {
   return {
-    async postJournalEntry(input: PostJournalEntryInput): Promise<PostJournalEntryResult> {
+    async postJournalEntry(
+      context: CallerContext,
+      input: PostJournalEntryInput
+    ): Promise<PostJournalEntryResult> {
+      assertRoleAudited(db, input.tenantId, context, [...POSTING_ROLES])
+      if (input.branchId) assertBranchAccessAudited(db, input.tenantId, context, input.branchId)
       return db.transaction((tx) => postJournalEntryInTx(tx, input))
     },
 
-    async postSupplierInvoiceJournal(tenantId: string, supplierInvoiceId: string) {
+    async postSupplierInvoiceJournal(context: CallerContext, tenantId: string, supplierInvoiceId: string) {
+      assertRoleAudited(db, tenantId, context, [...POSTING_ROLES])
       return db.transaction(async (tx) => {
         const [invoice] = await tx
           .select()
@@ -117,6 +130,7 @@ export function createAccountingService(db: Db): AccountingService {
           .where(and(eq(supplierInvoices.id, supplierInvoiceId), eq(supplierInvoices.tenantId, tenantId)))
           .limit(1)
         if (!invoice) throw new Error(`supplier_invoice ${supplierInvoiceId} not found for tenant`)
+        if (invoice.branchId) assertBranchAccessAudited(db, tenantId, context, invoice.branchId)
 
         const subtotal = Number(invoice.subtotal)
         const taxTotal = Number(invoice.taxTotal)
@@ -145,7 +159,8 @@ export function createAccountingService(db: Db): AccountingService {
       })
     },
 
-    async postSupplierPaymentJournal(tenantId: string, supplierPaymentId: string) {
+    async postSupplierPaymentJournal(context: CallerContext, tenantId: string, supplierPaymentId: string) {
+      assertRoleAudited(db, tenantId, context, [...POSTING_ROLES])
       return db.transaction(async (tx) => {
         const [payment] = await tx
           .select()
@@ -153,6 +168,7 @@ export function createAccountingService(db: Db): AccountingService {
           .where(and(eq(supplierPayments.id, supplierPaymentId), eq(supplierPayments.tenantId, tenantId)))
           .limit(1)
         if (!payment) throw new Error(`supplier_payment ${supplierPaymentId} not found for tenant`)
+        if (payment.branchId) assertBranchAccessAudited(db, tenantId, context, payment.branchId)
 
         const amount = Number(payment.amount)
 
@@ -201,7 +217,8 @@ export function createAccountingService(db: Db): AccountingService {
       })
     },
 
-    async postSaleInvoiceJournal(tenantId: string, saleInvoiceId: string) {
+    async postSaleInvoiceJournal(context: CallerContext, tenantId: string, saleInvoiceId: string) {
+      assertRoleAudited(db, tenantId, context, [...POSTING_ROLES])
       return db.transaction(async (tx) => {
         const [invoice] = await tx
           .select()
@@ -209,6 +226,7 @@ export function createAccountingService(db: Db): AccountingService {
           .where(and(eq(saleInvoices.id, saleInvoiceId), eq(saleInvoices.tenantId, tenantId)))
           .limit(1)
         if (!invoice) throw new Error(`sale_invoice ${saleInvoiceId} not found for tenant`)
+        assertBranchAccessAudited(db, tenantId, context, invoice.branchId)
 
         const subtotal = Number(invoice.subtotal)
         const discountTotal = Number(invoice.discountTotal)

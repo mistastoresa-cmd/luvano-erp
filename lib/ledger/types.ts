@@ -1,3 +1,5 @@
+import type { CallerContext } from '../authz/types'
+
 export type MovementReason =
   | 'sale'
   | 'return'
@@ -70,8 +72,19 @@ export interface SaleInvoiceResult {
 }
 
 export interface LedgerService {
-  recordInventoryMovement(input: RecordInventoryMovementInput): Promise<InventoryMovementResult>
+  // Any of the four roles may record stock/sale activity at a branch they
+  // have access to (RBAC T7) — day-to-day branch operations, not a
+  // financial-posting decision.
+  recordInventoryMovement(
+    context: CallerContext,
+    input: RecordInventoryMovementInput
+  ): Promise<InventoryMovementResult>
   // Writes invoice + lines + one movement per line, atomically, in one transaction.
-  recordSaleInvoice(input: RecordSaleInvoiceInput): Promise<SaleInvoiceResult>
-  getInventoryBalance(tenantId: string, branchId: string, sku: string): Promise<number>
+  recordSaleInvoice(context: CallerContext, input: RecordSaleInvoiceInput): Promise<SaleInvoiceResult>
+  getInventoryBalance(
+    context: CallerContext,
+    tenantId: string,
+    branchId: string,
+    sku: string
+  ): Promise<number>
 }

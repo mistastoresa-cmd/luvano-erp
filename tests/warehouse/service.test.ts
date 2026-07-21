@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm'
 import { createTestDb } from '../setup/db'
 import { seedTenantWithBranch } from '../setup/seed'
 import { createWarehouseService } from '@/lib/warehouse/service'
+import { SYSTEM_CONTEXT } from '@/lib/authz/types'
 import { branches, stockTransfers, stockTransferLines, reconciliationAlerts } from '@/db/schema'
 import { readInventoryBalance, applyInventoryDelta } from '@/lib/ledger/balance'
 
@@ -39,7 +40,7 @@ describe('WarehouseService.postStockTransfer', () => {
       .returning()
 
     const service = createWarehouseService(db)
-    const result = await service.postStockTransfer(tenant.id, transfer.id)
+    const result = await service.postStockTransfer(SYSTEM_CONTEXT, tenant.id, transfer.id)
 
     expect(result.lines[0].status).toBe('accepted')
     expect(result.lines[0].fromResultingQuantity).toBe(40)
@@ -87,7 +88,7 @@ describe('WarehouseService.postStockTransfer', () => {
     await db.insert(stockTransferLines).values({ transferId: transfer.id, sku: 'SKU-2', quantity: 5 })
 
     const service = createWarehouseService(db)
-    const result = await service.postStockTransfer(tenant.id, transfer.id)
+    const result = await service.postStockTransfer(SYSTEM_CONTEXT, tenant.id, transfer.id)
 
     expect(result.lines[0].fromOversold).toBe(true)
     expect(result.lines[0].fromResultingQuantity).toBe(-5)
@@ -122,13 +123,55 @@ describe('WarehouseService.postStockTransfer', () => {
     await db.insert(stockTransferLines).values({ transferId: transfer.id, sku: 'SKU-1', quantity: 5 })
 
     const service = createWarehouseService(db)
-    await service.postStockTransfer(tenant.id, transfer.id)
-    const second = await service.postStockTransfer(tenant.id, transfer.id)
+    await service.postStockTransfer(SYSTEM_CONTEXT, tenant.id, transfer.id)
+    const second = await service.postStockTransfer(SYSTEM_CONTEXT, tenant.id, transfer.id)
 
     expect(second.lines[0].status).toBe('duplicate')
     const warehouseBalance = await readInventoryBalance(db, tenant.id, warehouse.id, 'SKU-1')
     const branchBalance = await readInventoryBalance(db, tenant.id, physicalBranch.id, 'SKU-1')
     expect(warehouseBalance).toBe(15)
     expect(branchBalance).toBe(5)
+  })
+})
+
+describe('WarehouseService — RBAC', () => {
+  it('requires branch access to both the source and destination branch', async () => {
+    const db = await createTestDb()
+    const { tenant, physicalBranch } = await seedTenantWithBranch(db)
+    const [warehouse] = await db
+      .insert(branches)
+      .values({
+        tenantId: tenant.id,
+        name: 'Main Warehouse',
+        code: 'WH-RBAC-1',
+        type: 'warehouse',
+        isDefaultWarehouse: true,
+      })
+      .returning()
+    await applyInventoryDelta(db, tenant.id, warehouse.id, 'SKU-1', 50)
+
+    const [transfer] = await db
+      .insert(stockTransfers)
+      .values({
+        tenantId: tenant.id,
+        fromBranchId: warehouse.id,
+        toBranchId: physicalBranch.id,
+        transferNumber: 'TR-RBAC-1',
+        transferDate: '2026-07-20',
+      })
+      .returning()
+    await db.insert(stockTransferLines).values({ transferId: transfer.id, sku: 'SKU-1', quantity: 10 })
+
+    const service = createWarehouseService(db)
+    // Access to the destination branch only — not the source warehouse.
+    const restricted = {
+      userId: 'user-1',
+      role: 'branch_manager' as const,
+      branchAccess: { type: 'list' as const, branchIds: [physicalBranch.id] },
+    }
+
+    await expect(service.postStockTransfer(restricted, tenant.id, transfer.id)).rejects.toThrow(
+      'no access to branch'
+    )
   })
 })

@@ -3,6 +3,7 @@ import { inventoryMovements, saleInvoices, saleInvoiceLines } from '@/db/schema'
 import type { Db } from '@/db/client'
 import { applyInventoryDelta, readInventoryBalance } from './balance'
 import { raiseOversellAlert } from './alerts'
+import { assertRoleAudited, assertBranchAccessAudited } from '../authz/service'
 import type {
   LedgerService,
   RecordInventoryMovementInput,
@@ -11,11 +12,16 @@ import type {
   SaleInvoiceResult,
 } from './types'
 
+const BRANCH_OPERATION_ROLES = ['owner', 'accountant', 'branch_manager', 'staff'] as const
+
 export function createLedgerService(db: Db): LedgerService {
   return {
     async recordInventoryMovement(
+      context,
       input: RecordInventoryMovementInput
     ): Promise<InventoryMovementResult> {
+      assertRoleAudited(db, input.tenantId, context, [...BRANCH_OPERATION_ROLES])
+      assertBranchAccessAudited(db, input.tenantId, context, input.branchId)
       return db.transaction(async (tx) => {
         // onConflictDoNothing, not try/catch around a plain insert: a unique-
         // violation error inside a Postgres transaction aborts the *whole*
@@ -80,7 +86,9 @@ export function createLedgerService(db: Db): LedgerService {
       })
     },
 
-    async recordSaleInvoice(input: RecordSaleInvoiceInput): Promise<SaleInvoiceResult> {
+    async recordSaleInvoice(context, input: RecordSaleInvoiceInput): Promise<SaleInvoiceResult> {
+      assertRoleAudited(db, input.tenantId, context, [...BRANCH_OPERATION_ROLES])
+      assertBranchAccessAudited(db, input.tenantId, context, input.branchId)
       return db.transaction(async (tx) => {
         const subtotal = input.lines.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0)
         const discountTotal = input.lines.reduce((sum, l) => sum + (l.discount ?? 0), 0)
@@ -196,7 +204,9 @@ export function createLedgerService(db: Db): LedgerService {
       })
     },
 
-    async getInventoryBalance(tenantId: string, branchId: string, sku: string): Promise<number> {
+    async getInventoryBalance(context, tenantId: string, branchId: string, sku: string): Promise<number> {
+      assertRoleAudited(db, tenantId, context, [...BRANCH_OPERATION_ROLES])
+      assertBranchAccessAudited(db, tenantId, context, branchId)
       return readInventoryBalance(db, tenantId, branchId, sku)
     },
   }

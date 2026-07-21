@@ -1,3 +1,5 @@
+import type { CallerContext } from '../authz/types'
+
 export interface PostGoodsReceiptLineResult {
   lineId: string
   status: 'accepted' | 'duplicate'
@@ -60,15 +62,27 @@ export interface PurchasingService {
   // (increase, reason 'purchase_receipt') at the receipt's branch, links each
   // line's inventoryMovementId, and marks the receipt 'completed'. Idempotent —
   // re-posting an already-posted receipt is a safe no-op per line (same
-  // idempotency-key pattern as lib/ledger/service.ts).
-  postGoodsReceipt(tenantId: string, goodsReceiptId: string): Promise<PostGoodsReceiptResult>
+  // idempotency-key pattern as lib/ledger/service.ts). Physical receiving —
+  // open to all four roles at the receipt's branch (RBAC T7), unlike
+  // creating/sending a PO which is a purchasing-commitment decision.
+  postGoodsReceipt(
+    context: CallerContext,
+    tenantId: string,
+    goodsReceiptId: string
+  ): Promise<PostGoodsReceiptResult>
 
   // Creates a purchase_order + purchase_order_lines in 'draft' status.
-  createPurchaseOrder(input: CreatePurchaseOrderInput): Promise<CreatePurchaseOrderResult>
+  // Committing the company to a purchase — owner/accountant/branch_manager
+  // only, not staff (RBAC T7).
+  createPurchaseOrder(
+    context: CallerContext,
+    input: CreatePurchaseOrderInput
+  ): Promise<CreatePurchaseOrderResult>
 
   // draft -> sent. Throws if the PO isn't currently 'draft' (a sent/received/
-  // cancelled PO can't be "sent" again).
-  sendPurchaseOrder(tenantId: string, purchaseOrderId: string): Promise<void>
+  // cancelled PO can't be "sent" again). Same role restriction as
+  // createPurchaseOrder.
+  sendPurchaseOrder(context: CallerContext, tenantId: string, purchaseOrderId: string): Promise<void>
 
   // The PO-lifecycle counterpart of postGoodsReceipt: creates a goods_receipt
   // + goods_receipt_lines against an existing PO (validates every sku is on
@@ -77,6 +91,10 @@ export interface PurchasingService {
   // quantity vs ordered quantity per line — 'partially_received' if any line
   // is short, 'received' once every line's cumulative receipts meet or
   // exceed what was ordered. Supports receiving a PO across multiple partial
-  // shipments.
-  receivePurchaseOrder(input: ReceivePurchaseOrderInput): Promise<ReceivePurchaseOrderResult>
+  // shipments. Physical receiving — same open-to-all-four-roles rule as
+  // postGoodsReceipt.
+  receivePurchaseOrder(
+    context: CallerContext,
+    input: ReceivePurchaseOrderInput
+  ): Promise<ReceivePurchaseOrderResult>
 }

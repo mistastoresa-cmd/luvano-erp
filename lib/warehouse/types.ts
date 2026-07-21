@@ -1,3 +1,5 @@
+import type { CallerContext } from '../authz/types'
+
 export interface PostStockTransferLineResult {
   lineId: string
   status: 'accepted' | 'duplicate'
@@ -21,5 +23,12 @@ export interface WarehouseService {
   // lib/purchasing/service.ts::postGoodsReceipt. Follows the design spike 1
   // policy: a transfer that would oversell the source branch is still
   // recorded (never blocked) and raises a reconciliation alert instead.
-  postStockTransfer(tenantId: string, transferId: string): Promise<PostStockTransferResult>
+  // Requires branch access to BOTH the source and destination branch (RBAC
+  // T7) — a branch_manager restricted to one branch can't move stock into
+  // or out of a branch they don't manage.
+  postStockTransfer(
+    context: CallerContext,
+    tenantId: string,
+    transferId: string
+  ): Promise<PostStockTransferResult>
 }

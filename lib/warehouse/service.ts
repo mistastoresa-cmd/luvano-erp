@@ -3,7 +3,11 @@ import { stockTransfers, stockTransferLines, inventoryMovements } from '@/db/sch
 import type { Db, Tx } from '@/db/client'
 import { applyInventoryDelta, applyInventoryDeltaWithCost, readInventoryCost } from '../ledger/balance'
 import { raiseOversellAlert } from '../ledger/alerts'
+import { assertRoleAudited, assertBranchAccessAudited } from '../authz/service'
+import type { CallerContext } from '../authz/types'
 import type { WarehouseService, PostStockTransferResult, PostStockTransferLineResult } from './types'
+
+const TRANSFER_ROLES = ['owner', 'accountant', 'branch_manager', 'staff'] as const
 
 async function insertTransferMovement(
   tx: Tx,
@@ -49,9 +53,20 @@ async function insertTransferMovement(
 export function createWarehouseService(db: Db): WarehouseService {
   return {
     async postStockTransfer(
+      context: CallerContext,
       tenantId: string,
       transferId: string
     ): Promise<PostStockTransferResult> {
+      assertRoleAudited(db, tenantId, context, [...TRANSFER_ROLES])
+      const [transferBranches] = await db
+        .select({ fromBranchId: stockTransfers.fromBranchId, toBranchId: stockTransfers.toBranchId })
+        .from(stockTransfers)
+        .where(and(eq(stockTransfers.id, transferId), eq(stockTransfers.tenantId, tenantId)))
+        .limit(1)
+      if (!transferBranches) throw new Error(`stock_transfer ${transferId} not found for tenant`)
+      assertBranchAccessAudited(db, tenantId, context, transferBranches.fromBranchId)
+      assertBranchAccessAudited(db, tenantId, context, transferBranches.toBranchId)
+
       return db.transaction(async (tx) => {
         const [transfer] = await tx
           .select()
