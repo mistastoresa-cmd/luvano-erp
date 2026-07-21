@@ -2,6 +2,7 @@ import { pgTable, uuid, text, numeric, timestamp, uniqueIndex, index } from 'dri
 import { tenants } from './tenants'
 import { branches } from './branches'
 import { customers } from './customers'
+import { journalEntries } from './journal-entries'
 
 // One row per sale event — this table IS "unified invoicing" per the design doc's
 // definition: a single invoice record per sale, whether it originated from a Salla
@@ -50,6 +51,10 @@ export const saleInvoices = pgTable(
     occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
     recordedAt: timestamp('recorded_at', { withTimezone: true }).notNull().defaultNow(),
     createdBy: text('created_by'),
+    // Set once postSaleInvoiceJournal (lib/accounting/service.ts) posts this
+    // invoice's revenue/tax entry — nullable, populated after the fact by a
+    // separate posting step, same as supplierInvoices.journalEntryId.
+    journalEntryId: uuid('journal_entry_id').references(() => journalEntries.id),
   },
   (table) => [
     uniqueIndex('sale_invoices_tenant_idempotency_idx').on(table.tenantId, table.idempotencyKey),

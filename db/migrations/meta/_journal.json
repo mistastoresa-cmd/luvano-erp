@@ -29,6 +29,13 @@
       "when": 1784639415700,
       "tag": "0003_short_lady_mastermind",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1784640972101,
+      "tag": "0004_salty_sunspot",
+      "breakpoints": true
     }
   ]
 }

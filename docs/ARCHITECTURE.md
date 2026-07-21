@@ -97,11 +97,47 @@ below). Two new services now exist alongside `lib/ledger/service.ts`, sharing it
 plain `text` columns with a TypeScript-level enum, not a Postgres `CHECK`
 constraint.
 
-**Not yet linked:** accounting postings (supplier invoice, sale invoice, payroll
-→ journal entries) — this needs a new `account_mappings` table (which chart-of-
-accounts account is "accounts payable", "inventory asset", etc. for a given
-tenant) and is a separate, larger piece of design work than the inventory-side
-linking above. Deferred until the founder scopes it explicitly.
+## Accounting ↔ inventory linking
+
+Founder-directed follow-up: link accounting to the purchasing/sales documents
+above via automatic journal entries. `lib/accounting/service.ts` is the fourth
+service module (alongside ledger, purchasing, warehouse):
+
+- **`account_mappings`** (new table) solves "which chart-of-accounts account is
+  'accounts payable' for this tenant" — a fixed set of keys
+  (`db/schema/account-mappings.ts::accountMappingKeys`: cash,
+  accounts_receivable, accounts_payable, inventory_asset, sales_revenue, cogs,
+  input_tax, output_tax_payable, salary_expense, salary_payable), one
+  `chart_of_accounts` row mapped per key per tenant. Without this, automatic
+  posting has no way to know which account to hit — every tenant builds a
+  different chart of accounts.
+- **`postJournalEntry`** is the generic poster every specific posting function
+  goes through: validates `sum(debit) === sum(credit)` **before writing
+  anything** (throws otherwise) — this is the invariant `journal-entries.ts`'s
+  schema comment flagged as "an application-layer responsibility, not a DB
+  constraint," now actually enforced. Idempotent via a new partial unique index
+  `journal_entries_tenant_source_idx` on `(tenant_id, source_type,
+  source_reference) WHERE source_reference IS NOT NULL` (manual entries, which
+  have no source_reference, are unaffected by the constraint).
+- **`postSupplierInvoiceJournal`** — debit `inventory_asset` (+ `input_tax` if
+  any), credit `accounts_payable`. Links `supplier_invoices.journalEntryId`.
+- **`postSupplierPaymentJournal`** — debit `accounts_payable`, credit `cash`.
+  Links `supplier_payments.journalEntryId`, and recomputes
+  `supplier_invoices.status` (`unpaid`/`partially_paid`/`paid`) from the sum of
+  all payments linked to that invoice.
+- **`postSaleInvoiceJournal`** — debit `cash`, credit `sales_revenue` (+
+  `output_tax_payable` if any). **Deliberately no COGS line** — the founder
+  chose "revenue + tax only for now" specifically because there's no inventory
+  costing method (e.g. weighted-average cost) yet; adding a COGS line without
+  one would require picking a costing method as an unplanned side effect. This
+  is a scoped, temporary gap, not an oversight — it's the natural next
+  extension once costing is designed. `sale_invoices.journalEntryId` (new
+  column) is set once posted.
+
+**Still not linked:** payroll → journal entries (schema already has
+`payroll_entries.journalEntryId` reserved, but no posting function exists
+yet — out of scope for this round, which focused on accounting↔inventory
+specifically per the founder's request).
 
 ## What is explicitly deferred (not built in this phase)
 

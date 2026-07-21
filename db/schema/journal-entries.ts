@@ -1,4 +1,5 @@
 import { pgTable, uuid, text, timestamp, uniqueIndex, index } from 'drizzle-orm/pg-core'
+import { sql } from 'drizzle-orm'
 import { tenants } from './tenants'
 import { branches } from './branches'
 
@@ -23,7 +24,14 @@ export const journalEntries = pgTable(
     // شراء، تعديل مخزون...). sourceReference يحمل معرف ذلك المستند نصياً،
     // بنفس نمط inventory_movements.sourceReference.
     sourceType: text('source_type', {
-      enum: ['manual', 'sale_invoice', 'purchase_invoice', 'adjustment', 'system'],
+      enum: [
+        'manual',
+        'sale_invoice',
+        'purchase_invoice',
+        'supplier_payment',
+        'adjustment',
+        'system',
+      ],
     }).notNull(),
     sourceReference: text('source_reference'),
     status: text('status', { enum: ['draft', 'posted', 'voided'] })
@@ -35,5 +43,12 @@ export const journalEntries = pgTable(
   (table) => [
     uniqueIndex('journal_entries_tenant_entry_number_idx').on(table.tenantId, table.entryNumber),
     index('journal_entries_tenant_date_idx').on(table.tenantId, table.entryDate),
+    // Idempotency guard for auto-posted entries (postSupplierInvoiceJournal,
+    // postSaleInvoiceJournal, etc): re-posting the same source document must
+    // not create a second entry. NULLs are distinct in a Postgres unique
+    // index, so manual entries (sourceReference always null) are unaffected.
+    uniqueIndex('journal_entries_tenant_source_idx')
+      .on(table.tenantId, table.sourceType, table.sourceReference)
+      .where(sql`${table.sourceReference} IS NOT NULL`),
   ]
 )
