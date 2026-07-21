@@ -88,3 +88,73 @@ not after, wiring authz into the 5 existing services (TODO #2) — if the
 session-extension approach doesn't fit, the perf/invalidation design from
 this review (short sessions + immediate invalidation) may need revisiting.
 **Depends on:** Nothing — do this first, alongside or before TODO #1.
+
+---
+
+## Live Salla webhook integration — from `/plan-eng-review` (2026-07-21)
+
+## 6. Token refresh flow for `salla_connections`
+
+**What:** Cron or on-demand refresh of Salla access tokens before `expiresAt`,
+using the stored (encrypted) refresh token.
+**Why:** Without this, the connection silently stops working when the token
+expires — and the planned follow-up (fetching order details for refunds
+missing line-items, TODO #7) needs a valid token to call Salla's API at all.
+**Depends on:** `salla_connections` table existing.
+
+## 7. Key management policy for token encryption
+
+**What:** Move beyond "AES-256 key from an env var" — define rotation policy,
+consider a secrets manager, and plan for re-encrypting stored tokens if the
+key ever rotates.
+**Why:** Outside-voice review: "storing live merchant OAuth credentials... is
+not a policy" as currently described. Low urgency pre-launch, real risk once
+real merchant tokens are stored.
+**Depends on:** `salla_connections` existing.
+
+## 8. Handle Salla app-uninstall/deauthorize webhook event
+
+**What:** Listen for Salla's uninstall event, deactivate the matching
+`salla_connections` row, stop processing further webhooks for that store.
+**Why:** Without this, Luvano keeps dead-lettering (or worse, processing)
+events for stores that revoked access.
+**Depends on:** `salla_connections` + webhook event router existing.
+
+## 9. Observability for silently-dropped refunds
+
+**What:** Metric/alert when an `order.status.updated` refund event arrives
+with no line items (the known gap — connector currently returns `[]`).
+**Why:** Without this, a real refund vanishes from the books with zero
+signal until a merchant notices their numbers don't match Salla's dashboard.
+**Depends on:** Webhook service existing.
+
+## 10. Reconciliation/backfill for missed or out-of-order webhook events
+
+**What:** A periodic job that compares Luvano's ledger against Salla's order
+list (via API) to catch events lost during downtime or delivered out of order.
+**Why:** Webhooks aren't guaranteed ordered or lossless — a deploy-window gap
+or a redelivery race could silently miss a real order.
+**Depends on:** Live webhook integration running in production first —
+building this before there's real traffic to reconcile against is premature.
+
+## 11. Saudi PDPL data-residency/retention review for customer PII from Salla orders
+
+**What:** Legal/compliance research on data-residency and retention
+requirements for customer PII (name, phone, address) now flowing in from
+Salla orders — same category of work as the ZATCA compliance note in
+`docs/ARCHITECTURE.md` (dedicated research, not sized as regular engineering).
+**Why:** This is a live regulatory concern in the Saudi market, not
+hypothetical, once real customer data starts flowing through the system.
+**Depends on:** Nothing — can start in parallel with implementation.
+
+## 12. Connection-pool exhaustion risk under Neon serverless during traffic bursts
+
+**What:** Load-test webhook processing under a simulated flash-sale burst
+(concurrent requests each holding a transaction across inventory + accounting
+writes) against Neon's serverless connection limits.
+**Why:** Outside-voice review: a burst "can cascade into connection
+exhaustion for the whole tenant, not just slow individual requests." Deferred
+per the sync-processing decision (queue redesign only once real latency data
+justifies it) — but should be load-tested, not just assumed fine.
+**Depends on:** Webhook integration built and running against at least one
+real (sandbox) store first.
