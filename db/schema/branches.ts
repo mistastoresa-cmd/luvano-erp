@@ -10,8 +10,18 @@ export const branches = pgTable(
       .notNull()
       .references(() => tenants.id),
     name: text('name').notNull(),
-    // Short human code, e.g. "RIYADH-01".
+    // Short human code, e.g. "RIYADH-01" — also serves as the "warehouse
+    // number" for inventory purposes; every branch already tracks its own
+    // stock (inventory_balances is keyed by branch_id regardless of
+    // branches.type), so no separate warehouse-number field is needed.
     code: text('code').notNull(),
+    // Distinct from `code` — the branch's reference number *as a reporting
+    // dimension* in accounting (like a cost-center code). Every auto-posted
+    // journal entry (lib/accounting/service.ts) carries journal_entries.branchId,
+    // so P&L/balance-sheet reports can filter by this branch without needing
+    // separate per-branch accounts in the chart of accounts. Nullable — a
+    // branch can exist before its accounting code is assigned.
+    accountingCode: text('accounting_code'),
     // Exactly one 'online' branch per tenant represents the Salla storefront itself,
     // so Salla-sourced movements/invoices have a branch_id to point at like everything
     // else — no special-cased nullable branch column anywhere downstream.
@@ -31,5 +41,8 @@ export const branches = pgTable(
     uniqueIndex('branches_tenant_default_warehouse_idx')
       .on(table.tenantId, table.isDefaultWarehouse)
       .where(sql`${table.isDefaultWarehouse} = true`),
+    uniqueIndex('branches_tenant_accounting_code_idx')
+      .on(table.tenantId, table.accountingCode)
+      .where(sql`${table.accountingCode} IS NOT NULL`),
   ]
 )

@@ -180,6 +180,44 @@ open.
   `sale_invoice_lines` at invoice-creation time in `lib/ledger/service.ts` —
   deferred, not requested this round.
 
+## Branch-level financial reporting
+
+Founder-directed: every branch needs its own reportable P&L and balance sheet.
+Two schema additions close a gap this required, and a new `lib/reporting/`
+module does the actual aggregation:
+
+- **`branches.accountingCode`** (new, nullable, unique per tenant when set) —
+  the branch's reference number *as a reporting dimension*, distinct from
+  `branches.code` (which already serves as the de facto warehouse number,
+  since every branch — not just `type: 'warehouse'` ones — already tracks its
+  own stock via `inventory_balances` keyed by `branch_id`). No new
+  "warehouse number" field was needed; one already existed.
+- **`supplier_invoices.branchId` / `supplier_payments.branchId`** (new,
+  nullable) — these documents previously had no *direct* branch link (only an
+  optional, indirect one via `purchaseOrderId`), so `journal_entries.branchId`
+  came out null for anything posted through
+  `postSupplierInvoiceJournal`/`postSupplierPaymentJournal`. Fixed by wiring
+  these new columns straight into `postJournalEntryInTx`'s `branchId`
+  argument — `sale_invoices` already had a mandatory `branchId`, so the sales
+  side needed no schema change, just the reporting layer below.
+- **`lib/reporting/service.ts`** — `getBranchProfitAndLoss(tenantId, branchId,
+  dateFrom, dateTo)` and `getBranchBalanceSheet(tenantId, branchId,
+  asOfDate)`, both aggregating `journal_entry_lines` (joined to
+  `journal_entries` and `chart_of_accounts`) filtered by
+  `journal_entries.branchId` and `status = 'posted'`. Revenue/liability/equity
+  amounts are `credit - debit` per account (their normal balance side);
+  asset/expense amounts are `debit - credit`.
+
+**Important framing, not a limitation to fix:** a per-branch balance sheet
+isn't a legally separate financial statement — assets, liabilities, and
+equity belong to the company as a whole, not to one branch. What this module
+actually provides is the **branch dimension already present on every
+auto-posted journal entry**, filtered into a P&L/balance-sheet *shape* for
+internal management reporting — the same approach Odoo calls "Analytic
+Accounting" and every serious multi-branch retail ERP offers. This is exactly
+what "أقدر أطلع منه تقارير أرباح وخسائر وميزانية" (the founder's own framing)
+means in practice, and is the right amount of rigor for this phase.
+
 ## What is explicitly deferred (not built in this phase)
 
 - **No live Salla webhook route.** `app/api/health/route.ts` is the only live

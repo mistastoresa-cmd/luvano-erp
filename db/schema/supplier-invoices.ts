@@ -3,6 +3,7 @@ import { tenants } from './tenants'
 import { suppliers } from './suppliers'
 import { purchaseOrders } from './purchase-orders'
 import { journalEntries } from './journal-entries'
+import { branches } from './branches'
 
 // فاتورة المورّد — الطرف المقابل لـsale_invoices على جانب المشتريات (ذمم
 // دائنة/Accounts Payable بدل ذمم مدينة/Accounts Receivable). journalEntryId
@@ -18,6 +19,11 @@ export const supplierInvoices = pgTable(
       .notNull()
       .references(() => suppliers.id),
     purchaseOrderId: uuid('purchase_order_id').references(() => purchaseOrders.id),
+    // اختياري ومستقل عن purchaseOrderId — لازم يكون معروف مباشرة على الفاتورة
+    // نفسها (مو مشتق فقط عبر أمر الشراء، اللي هو نفسه اختياري) عشان
+    // postSupplierInvoiceJournal يقدر يمرر بُعد الفرع للقيد المحاسبي حتى لو
+    // الفاتورة بلا PO. انظر lib/accounting/service.ts.
+    branchId: uuid('branch_id').references(() => branches.id),
     // رقم الفاتورة الداخلي بلوفانو.
     invoiceNumber: text('invoice_number').notNull(),
     // رقم فاتورة المورّد نفسه (يظهر على مستنده الورقي/الرقمي) — مختلف عن

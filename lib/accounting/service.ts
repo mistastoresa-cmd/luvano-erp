@@ -124,6 +124,7 @@ export function createAccountingService(db: Db): AccountingService {
 
         const result = await postJournalEntryInTx(tx, {
           tenantId,
+          branchId: invoice.branchId ?? undefined,
           entryDate: new Date(invoice.invoiceDate),
           sourceType: 'purchase_invoice',
           sourceReference: invoice.id,
@@ -157,6 +158,7 @@ export function createAccountingService(db: Db): AccountingService {
 
         const result = await postJournalEntryInTx(tx, {
           tenantId,
+          branchId: payment.branchId ?? undefined,
           entryDate: new Date(payment.paymentDate),
           sourceType: 'supplier_payment',
           sourceReference: payment.id,
