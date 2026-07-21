@@ -14,6 +14,11 @@ export interface SallaOrderWebhookPayload {
     id: number | string
     created_at: string
     items: SallaOrderWebhookItem[]
+    // Present on order.status.updated — absent on order.created. Salla does not
+    // send a distinct "order.refunded"/"order.cancelled" event; a refund or
+    // cancellation arrives as order.status.updated with this field describing
+    // the new status. See adapter.ts for how it's read.
+    status?: { slug?: string; name?: string } | string
   }
 }
 
