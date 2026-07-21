@@ -383,6 +383,27 @@ which is exactly why product variants was sequenced first.
 12 tests (concurrency, targeting-to-variant, targeting-to-product,
 untargeted, all the rejection reasons). No live route/UI yet.
 
+## Customers (Phase 1.5, module 3 of 6 — implemented)
+
+Moved from schema-only to real logic — `lib/customers/service.ts`.
+
+- **New `customer_interactions` table** (`type`: call/note/complaint/
+  follow_up, `summary`, `createdBy`, indexed on `(tenant_id, customer_id)`).
+  This is deliberately separate from `sale_invoices` — that table already
+  records *transactions* with a customer (`customerId` FK, added when the
+  `customers` table was first created); this one records human *contact*
+  around a customer that can't be derived from invoice rows (a phone call,
+  a complaint, a follow-up note).
+- **CRUD is tenant-scoped on every read/write** (`createCustomer`,
+  `updateCustomer`, `getCustomer`, `listCustomers`) — `updateCustomer`
+  throws if the `(tenantId, customerId)` pair doesn't match a row, so one
+  tenant can never edit another tenant's customer even with a guessed id.
+- **`listInteractions` returns newest-first** (`ORDER BY created_at DESC`)
+  — matches how a CRM timeline is actually read.
+
+7 tests (CRUD, cross-tenant isolation on update/get/list, interaction
+logging, interaction listing scoped to one customer). No live route/UI yet.
+
 ## Why schema-only, not live integration
 
 The design doc's "Demand Evidence" section flags that external, paying-customer
