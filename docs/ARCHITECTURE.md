@@ -73,6 +73,36 @@ silent drift. See git log for the sequence of decisions.
   (`lib/sync/types.ts`), reconciled per
   `docs/design-spikes/02-offline-reconciliation.md`.
 
+## Document-cycle linking (inventory side only, so far)
+
+Founder-directed: link the modules together through their actual document flow,
+starting with the inventory side (deferred: automatic accounting postings — see
+below). Two new services now exist alongside `lib/ledger/service.ts`, sharing its
+`applyInventoryDelta` primitive and oversell-alert policy
+(extracted to `lib/ledger/alerts.ts` for reuse):
+
+- `lib/purchasing/service.ts::postGoodsReceipt` — posts a `goods_receipts`
+  row's lines as `inventory_movements` (reason `'purchase_receipt'`) at the
+  receipt's branch, links each line's `inventoryMovementId`, and marks the
+  receipt `'completed'`. Idempotent (safe to re-run).
+- `lib/warehouse/service.ts::postStockTransfer` — posts a `stock_transfers`
+  row's lines as a paired `transfer_out`/`transfer_in` movement (source/
+  destination branch), links `fromMovementId`/`toMovementId`, marks the
+  transfer `'completed'`. Idempotent. A transfer that would oversell the
+  source branch is still recorded, not blocked — same policy as
+  `docs/design-spikes/01-conflict-resolution.md`.
+
+`inventory_movements.reason`/`sourceType` gained `'purchase_receipt'` and
+(`sourceType` only) `'stock_transfer'` — no migration was needed since these are
+plain `text` columns with a TypeScript-level enum, not a Postgres `CHECK`
+constraint.
+
+**Not yet linked:** accounting postings (supplier invoice, sale invoice, payroll
+→ journal entries) — this needs a new `account_mappings` table (which chart-of-
+accounts account is "accounts payable", "inventory asset", etc. for a given
+tenant) and is a separate, larger piece of design work than the inventory-side
+linking above. Deferred until the founder scopes it explicitly.
+
 ## What is explicitly deferred (not built in this phase)
 
 - **No live Salla webhook route.** `app/api/health/route.ts` is the only live

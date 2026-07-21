@@ -1,7 +1,8 @@
 import { eq, and } from 'drizzle-orm'
-import { inventoryMovements, saleInvoices, saleInvoiceLines, reconciliationAlerts } from '@/db/schema'
-import type { Db, DbOrTx } from '@/db/client'
+import { inventoryMovements, saleInvoices, saleInvoiceLines } from '@/db/schema'
+import type { Db } from '@/db/client'
 import { applyInventoryDelta, readInventoryBalance } from './balance'
+import { raiseOversellAlert } from './alerts'
 import type {
   LedgerService,
   RecordInventoryMovementInput,
@@ -9,23 +10,6 @@ import type {
   InventoryMovementResult,
   SaleInvoiceResult,
 } from './types'
-
-async function raiseOversellAlert(
-  db: DbOrTx,
-  tenantId: string,
-  branchId: string,
-  sku: string,
-  resultingQuantity: number,
-  movementIds: string[]
-) {
-  await db.insert(reconciliationAlerts).values({
-    tenantId,
-    branchId,
-    sku,
-    type: 'oversell',
-    detail: { resultingQuantity, movementIds },
-  })
-}
 
 export function createLedgerService(db: Db): LedgerService {
   return {

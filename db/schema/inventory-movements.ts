@@ -25,10 +25,26 @@ export const inventoryMovements = pgTable(
     // (return/adjustment/transfer-in/initial stock).
     quantityDelta: integer('quantity_delta').notNull(),
     reason: text('reason', {
-      enum: ['sale', 'return', 'adjustment', 'transfer_in', 'transfer_out', 'initial_stock'],
+      enum: [
+        'sale',
+        'return',
+        'adjustment',
+        'transfer_in',
+        'transfer_out',
+        'initial_stock',
+        'purchase_receipt',
+      ],
     }).notNull(),
     sourceType: text('source_type', {
-      enum: ['salla_webhook', 'branch_pos', 'branch_offline_sync', 'manual_adjustment', 'system'],
+      enum: [
+        'salla_webhook',
+        'branch_pos',
+        'branch_offline_sync',
+        'manual_adjustment',
+        'system',
+        'purchase_receipt',
+        'stock_transfer',
+      ],
     }).notNull(),
     // Salla order id, POS terminal ref, etc.
     sourceReference: text('source_reference'),
