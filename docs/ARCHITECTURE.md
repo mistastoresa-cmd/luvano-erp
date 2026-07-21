@@ -321,6 +321,39 @@ wiring `assertRole`/`assertBranchAccess` into the 5 existing services
 authorization yet, this phase only built the auth/authz foundation itself —
 and an audit trail for denied access attempts.
 
+## Product variants (Phase 1.5, module 1 of 6 — implemented)
+
+Founder-directed: some categories (clothing, shoes) need a product to have
+color/size variants, each with its own SKU, while reports and offers can
+target either the parent (covers every variant) or one specific variant
+(e.g. "discount only on size 40, black").
+
+- **`products`** (parent) + **`product_variants`** (child, the actual SKU
+  holder) — `db/schema/products.ts`, `db/schema/product-variants.ts`.
+  `attributes` is a generic `jsonb` key-value (`{"color":"black","size":"40"}`),
+  not fixed color/size columns, since variant axes differ by business type.
+- **Every product gets at least one variant row**, including simple
+  (non-variant) products — this is what let the existing 8 SKU-bearing
+  tables (`inventory_movements`, `inventory_balances`, `sale_invoice_lines`,
+  `purchase_order_lines`, `goods_receipt_lines`, `supplier_invoice_lines`,
+  `stock_transfer_lines`, `reconciliation_alerts`) stay completely
+  unchanged — no migration needed on any of them.
+- **Deliberately no FK** from those 8 tables' `sku` columns to
+  `product_variants.sku` — this table is a reference/lookup catalog (name,
+  category, attributes for a SKU), not an enforced referential-integrity
+  constraint. A SKU can exist in inventory before it's registered here, same
+  as before this module existed. Trade-off made explicitly to avoid
+  migrating 8 already-built, already-tested tables for this module.
+- **`lib/products/service.ts::resolveSkusForTarget`** is the founder's exact
+  requirement made concrete: given `{ type: 'product', productId }` it
+  returns every child SKU; given `{ type: 'variant', variantId }` it returns
+  exactly one. This is what a future coupon/campaign (module 2, marketing —
+  not built yet) or a future SKU-level report will call to resolve what it
+  actually applies to.
+
+8 tests. No live route/UI — same phase-appropriate scope as every other
+module so far (schema + real service logic, exercised via pglite).
+
 ## Why schema-only, not live integration
 
 The design doc's "Demand Evidence" section flags that external, paying-customer
