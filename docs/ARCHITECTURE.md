@@ -404,6 +404,49 @@ Moved from schema-only to real logic — `lib/customers/service.ts`.
 7 tests (CRUD, cross-tenant isolation on update/get/list, interaction
 logging, interaction listing scoped to one customer). No live route/UI yet.
 
+## Human Resources (Phase 1.5, module 4 of 6 — implemented)
+
+Moved from schema-only to real logic — `lib/hr/service.ts`. Reuses the
+accounting module's internal `postJournalEntryInTx` directly (now exported
+from `lib/accounting/service.ts`, same as `applyInventoryDeltaWithCost` is
+exported from `lib/ledger/balance.ts` for other modules to call inside
+their own transaction) rather than composing whole services, so the
+journal entry and the `payroll_entries.journalEntryId` backfill commit
+atomically in one transaction.
+
+- **`processPayrollRun` snapshots, it doesn't reference live data** — each
+  active employee's `baseSalary` at the moment of processing (plus any
+  per-employee `allowances`/`deductions` override) is copied into a new
+  `payroll_entries` row. A later raise to `employees.baseSalary` never
+  retroactively changes an already-processed run's figures — this is the
+  correct behavior for payroll, not an oversight.
+- **A run can only be processed once** (`status` must be `'draft'`,
+  flips to `'processed'` in the same transaction as the entry inserts) —
+  reprocessing would double-pay every employee.
+- **`postPayrollJournal` posts one journal entry per run, not one per
+  employee** (debit `salary_expense` / credit `salary_payable`, sized
+  from `sum(netPay)` across the run's entries) — matches how a real
+  payroll batch reads on the books. Idempotent via the same
+  `sourceType`+`sourceReference` uniqueness `postSupplierInvoiceJournal`
+  already relies on — added `'payroll'` to `journal_entries.sourceType`
+  for this (a `text` enum at the TypeScript level only, no Postgres
+  `CHECK` constraint, so this required no migration).
+- **`salary_expense`/`salary_payable` account_mappings keys already
+  existed** in the schema from when `payroll_entries.journalEntryId` was
+  first reserved — module 4 is the first to actually use them.
+
+6 tests (snapshot correctness, active-only filtering, reprocess rejection,
+balanced posting, idempotent re-posting, posting-before-processing
+rejection). No live route/UI yet.
+
+Also fixed a real flake found while running this module's tests: as the
+suite grew past ~17 pglite-backed files, `vitest.config.ts`'s existing
+`pool: 'forks'` isolation (see the note in that file) started hitting
+occasional "Worker exited unexpectedly" crashes under full parallelism —
+too many concurrent WASM instances competing for memory. Capped with
+`poolOptions.forks.maxForks: 4`; reproduced the crash twice before the
+fix, clean on every run after.
+
 ## Why schema-only, not live integration
 
 The design doc's "Demand Evidence" section flags that external, paying-customer

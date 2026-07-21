@@ -12,6 +12,16 @@ export default defineConfig({
     // with fileParallelism disabled. 'forks' isolates each file in its own
     // process, so memory is fully reclaimed by the OS when a file finishes.
     pool: 'forks',
+    // As the suite grew past ~17 pglite-backed files, even one-process-per-file
+    // isolation started hitting occasional "Worker exited unexpectedly" crashes
+    // under full parallelism (too many concurrent WASM instances competing for
+    // memory). Capping concurrent forks trades a bit of wall-clock time for
+    // reliability.
+    poolOptions: {
+      forks: {
+        maxForks: 4,
+      },
+    },
   },
   resolve: {
     alias: {

@@ -36,7 +36,7 @@ function round2(n: number): string {
   return n.toFixed(2)
 }
 
-async function postJournalEntryInTx(
+export async function postJournalEntryInTx(
   tx: Tx,
   input: PostJournalEntryInput
 ): Promise<PostJournalEntryResult> {

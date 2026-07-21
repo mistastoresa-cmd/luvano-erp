@@ -7,6 +7,7 @@ export type JournalSourceType =
   | 'sale_invoice'
   | 'purchase_invoice'
   | 'supplier_payment'
+  | 'payroll'
   | 'adjustment'
   | 'system'
 
