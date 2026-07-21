@@ -56,8 +56,10 @@ export interface AccountingService {
     supplierPaymentId: string
   ): Promise<PostJournalEntryResult>
 
-  // Debit cash, credit sales_revenue (+ output_tax_payable if any). No COGS
-  // line — deferred until an inventory costing method (e.g. weighted average)
-  // exists; see docs/ARCHITECTURE.md.
+  // Debit cash, credit sales_revenue (+ output_tax_payable if any), plus a
+  // debit cogs / credit inventory_asset pair sized from the current weighted-
+  // average cost per line (omitted if that comes to 0, e.g. a sale posted
+  // before any purchase). Uses the cost as it stands *now*, not frozen at the
+  // moment of sale — see docs/ARCHITECTURE.md for that simplification.
   postSaleInvoiceJournal(tenantId: string, saleInvoiceId: string): Promise<PostJournalEntryResult>
 }

@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm'
 import { createTestDb } from '../setup/db'
 import { seedTenantWithBranch } from '../setup/seed'
 import { createAccountingService } from '@/lib/accounting/service'
+import { createPurchasingService } from '@/lib/purchasing/service'
 import {
   chartOfAccounts,
   accountMappings,
@@ -11,17 +12,21 @@ import {
   supplierInvoices,
   supplierPayments,
   saleInvoices,
+  saleInvoiceLines,
+  goodsReceipts,
+  goodsReceiptLines,
 } from '@/db/schema'
 import type { AccountMappingKey } from '@/lib/accounting/types'
 
 async function seedAccountMappings(db: Awaited<ReturnType<typeof createTestDb>>, tenantId: string) {
-  const keys: { key: AccountMappingKey; code: string; name: string; type: 'asset' | 'liability' | 'revenue' }[] = [
+  const keys: { key: AccountMappingKey; code: string; name: string; type: 'asset' | 'liability' | 'revenue' | 'expense' }[] = [
     { key: 'cash', code: '1000', name: 'Cash', type: 'asset' },
     { key: 'inventory_asset', code: '1100', name: 'Inventory', type: 'asset' },
     { key: 'input_tax', code: '1200', name: 'Input Tax', type: 'asset' },
     { key: 'accounts_payable', code: '2000', name: 'Accounts Payable', type: 'liability' },
     { key: 'output_tax_payable', code: '2100', name: 'Output Tax Payable', type: 'liability' },
     { key: 'sales_revenue', code: '4000', name: 'Sales Revenue', type: 'revenue' },
+    { key: 'cogs', code: '5000', name: 'Cost of Goods Sold', type: 'expense' },
   ]
 
   const map: Partial<Record<AccountMappingKey, string>> = {}
@@ -178,7 +183,7 @@ describe('AccountingService.postSupplierPaymentJournal', () => {
 })
 
 describe('AccountingService.postSaleInvoiceJournal', () => {
-  it('posts a balanced debit-cash/credit-revenue+tax entry with no COGS line', async () => {
+  it('posts a balanced debit-cash/credit-revenue+tax entry, no COGS lines when the invoice has no lines', async () => {
     const db = await createTestDb()
     const { tenant, physicalBranch } = await seedTenantWithBranch(db)
     await seedAccountMappings(db, tenant.id)
@@ -213,6 +218,64 @@ describe('AccountingService.postSaleInvoiceJournal', () => {
 
     const [updated] = await db.select().from(saleInvoices).where(eq(saleInvoices.id, invoice.id))
     expect(updated.journalEntryId).toBe(result.journalEntryId)
+  })
+
+  it('adds a balanced COGS line sized from the current weighted-average cost', async () => {
+    const db = await createTestDb()
+    const { tenant, physicalBranch } = await seedTenantWithBranch(db)
+    await seedAccountMappings(db, tenant.id)
+    const purchasing = createPurchasingService(db)
+    const accounting = createAccountingService(db)
+
+    // Establish a known average cost via a posted goods receipt: 20 units @ 15.00.
+    const [receipt] = await db
+      .insert(goodsReceipts)
+      .values({ tenantId: tenant.id, branchId: physicalBranch.id, receiptNumber: 'GR-COGS-1', receivedDate: '2026-07-20' })
+      .returning()
+    await db
+      .insert(goodsReceiptLines)
+      .values({ goodsReceiptId: receipt.id, sku: 'SKU-1', quantityReceived: 20, unitCost: '15.00' })
+    await purchasing.postGoodsReceipt(tenant.id, receipt.id)
+
+    const [invoice] = await db
+      .insert(saleInvoices)
+      .values({
+        tenantId: tenant.id,
+        branchId: physicalBranch.id,
+        invoiceNumber: 'INV-ACC-2',
+        sourceType: 'branch_pos',
+        subtotal: '100.00',
+        total: '100.00',
+        idempotencyKey: 'acc-test-inv-2',
+        occurredAt: new Date(),
+      })
+      .returning()
+    await db
+      .insert(saleInvoiceLines)
+      .values({
+        invoiceId: invoice.id,
+        sku: 'SKU-1',
+        productName: 'Oud 50ml',
+        quantity: 4,
+        unitPrice: '25.00',
+        lineTotal: '100.00',
+      })
+
+    const result = await accounting.postSaleInvoiceJournal(tenant.id, invoice.id)
+
+    const lines = await db
+      .select()
+      .from(journalEntryLines)
+      .where(eq(journalEntryLines.journalEntryId, result.journalEntryId))
+    // cash, sales_revenue, cogs, inventory_asset — no tax this time.
+    expect(lines).toHaveLength(4)
+    const totalDebit = lines.reduce((s, l) => s + Number(l.debit), 0)
+    const totalCredit = lines.reduce((s, l) => s + Number(l.credit), 0)
+    expect(totalDebit).toBe(totalCredit)
+
+    // 4 units sold * 15.00 average cost = 60.00 COGS.
+    const cogsLineTotal = lines.reduce((s, l) => s + Number(l.debit), 0) - 100 // cash debit is 100
+    expect(cogsLineTotal).toBe(60)
   })
 })
 

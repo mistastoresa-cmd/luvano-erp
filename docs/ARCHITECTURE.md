@@ -139,6 +139,47 @@ service module (alongside ledger, purchasing, warehouse):
 yet — out of scope for this round, which focused on accounting↔inventory
 specifically per the founder's request).
 
+## Costing foundation (weighted-average)
+
+Founder-directed follow-up, immediately after the accounting↔inventory linking
+above — this is what unblocked the COGS gap that section deliberately left
+open.
+
+- **`inventory_balances.averageCost`** (new column, `numeric(14,4)`) — extra
+  decimal precision versus the usual `(12,2)` money columns, because repeated
+  weighted-average blending accumulates rounding otherwise.
+- **`lib/ledger/balance.ts::applyInventoryDeltaWithCost`** — same atomic
+  upsert as `applyInventoryDelta`, plus cost blending *only* when both
+  `delta > 0` and a `unitCost` is given. A decrease (sale, transfer-out,
+  adjustment) never touches `averageCost` — that's standard weighted-average
+  costing (cost-per-unit doesn't change when units leave, only when new ones
+  arrive at a different cost). If the *current* quantity is `<= 0` (e.g. after
+  an earlier oversell), blending against it is meaningless, so the incoming
+  unit cost replaces it as a fresh baseline instead.
+  - **Postgres gotcha hit and fixed:** the blend `CASE` expression mixes bound
+    parameters on both sides of `*`/`/`, which pglite (and Postgres generally)
+    can't type-resolve — `operator is not unique: unknown * unknown`. Fixed
+    with explicit `::numeric` casts on every parameter in that expression.
+- **Wired into two call sites:**
+  - `lib/purchasing/service.ts::postGoodsReceipt` — blends using each line's
+    `goods_receipt_lines.unitCost`.
+  - `lib/warehouse/service.ts::postStockTransfer` — reads the *source*
+    branch's average cost before moving anything, and blends that cost into
+    the *destination* branch's balance (the cost basis moves with the stock).
+    The `transfer_out` side never touches cost, matching the decrease rule.
+- **`lib/accounting/service.ts::postSaleInvoiceJournal`** now adds a
+  `debit cogs / credit inventory_asset` line pair, sized from
+  `sum(line.quantity * current averageCost)` across the invoice's
+  `sale_invoice_lines` — omitted entirely when that sum is 0 (e.g. a sale
+  posted before any purchase ever set a cost). **Known simplification, not a
+  bug:** this uses the average cost *as it stands at posting time*, not frozen
+  at the moment of sale — `sale_invoice_lines` has no cost column to freeze
+  it. If purchases happen between the sale and when this journal gets posted,
+  the COGS figure reflects the current average, not the historical one at
+  sale time. Fixing this properly would mean adding a cost snapshot to
+  `sale_invoice_lines` at invoice-creation time in `lib/ledger/service.ts` —
+  deferred, not requested this round.
+
 ## What is explicitly deferred (not built in this phase)
 
 - **No live Salla webhook route.** `app/api/health/route.ts` is the only live

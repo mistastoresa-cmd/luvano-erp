@@ -1,7 +1,7 @@
 import { eq, and } from 'drizzle-orm'
 import { goodsReceipts, goodsReceiptLines, inventoryMovements } from '@/db/schema'
 import type { Db } from '@/db/client'
-import { applyInventoryDelta } from '../ledger/balance'
+import { applyInventoryDeltaWithCost } from '../ledger/balance'
 import { raiseOversellAlert } from '../ledger/alerts'
 import type { PurchasingService, PostGoodsReceiptResult, PostGoodsReceiptLineResult } from './types'
 
@@ -72,12 +72,13 @@ export function createPurchasingService(db: Db): PurchasingService {
           }
 
           const movementId = movementRow.id
-          const { resultingQuantity, oversold } = await applyInventoryDelta(
+          const { resultingQuantity, oversold } = await applyInventoryDeltaWithCost(
             tx,
             tenantId,
             receipt.branchId,
             line.sku,
-            line.quantityReceived
+            line.quantityReceived,
+            Number(line.unitCost)
           )
 
           await tx

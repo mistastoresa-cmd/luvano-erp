@@ -1,0 +1,1 @@
+ALTER TABLE "inventory_balances" ADD COLUMN "average_cost" numeric(14, 4) DEFAULT '0' NOT NULL;

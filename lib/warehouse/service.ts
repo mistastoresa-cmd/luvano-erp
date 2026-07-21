@@ -1,7 +1,7 @@
 import { eq, and } from 'drizzle-orm'
 import { stockTransfers, stockTransferLines, inventoryMovements } from '@/db/schema'
 import type { Db, Tx } from '@/db/client'
-import { applyInventoryDelta } from '../ledger/balance'
+import { applyInventoryDelta, applyInventoryDeltaWithCost, readInventoryCost } from '../ledger/balance'
 import { raiseOversellAlert } from '../ledger/alerts'
 import type { WarehouseService, PostStockTransferResult, PostStockTransferLineResult } from './types'
 
@@ -108,6 +108,15 @@ export function createWarehouseService(db: Db): WarehouseService {
             continue
           }
 
+          // Read the source branch's average cost before mutating anything —
+          // that's the cost basis moving with the stock. A transfer_out never
+          // changes average cost itself (only quantity), so read order versus
+          // the "out" decrement below doesn't matter for correctness, but
+          // reading it upfront keeps the cost-carrying intent explicit.
+          const sourceCost = in_.isNew
+            ? await readInventoryCost(tx, tenantId, transfer.fromBranchId, line.sku)
+            : 0
+
           const fromBalance = out.isNew
             ? await applyInventoryDelta(
                 tx,
@@ -118,14 +127,15 @@ export function createWarehouseService(db: Db): WarehouseService {
               )
             : { resultingQuantity: 0, oversold: false }
           const toBalance = in_.isNew
-            ? await applyInventoryDelta(
+            ? await applyInventoryDeltaWithCost(
                 tx,
                 tenantId,
                 transfer.toBranchId,
                 line.sku,
-                Math.abs(line.quantity)
+                Math.abs(line.quantity),
+                sourceCost
               )
-            : { resultingQuantity: 0, oversold: false }
+            : { resultingQuantity: 0, oversold: false, averageCost: 0 }
 
           await tx
             .update(stockTransferLines)

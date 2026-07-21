@@ -6,8 +6,10 @@ import {
   supplierInvoices,
   supplierPayments,
   saleInvoices,
+  saleInvoiceLines,
 } from '@/db/schema'
 import type { Db, Tx } from '@/db/client'
+import { readInventoryCost } from '../ledger/balance'
 import type {
   AccountingService,
   AccountMappingKey,
@@ -212,6 +214,26 @@ export function createAccountingService(db: Db): AccountingService {
         const total = Number(invoice.total)
         const netRevenue = subtotal - discountTotal
 
+        // COGS: sum(quantity * average cost at this branch) across the
+        // invoice's lines, using inventory_balances.averageCost as it stands
+        // *now* (at posting time), not the cost frozen at the moment of sale
+        // — sale_invoice_lines has no cost column yet, so there's nothing to
+        // freeze. If purchases happen between the sale and this posting, the
+        // COGS figure reflects the current weighted average, not the true
+        // historical cost. Documented simplification, not a bug — see
+        // docs/ARCHITECTURE.md.
+        const lines = await tx
+          .select({ sku: saleInvoiceLines.sku, quantity: saleInvoiceLines.quantity })
+          .from(saleInvoiceLines)
+          .where(eq(saleInvoiceLines.invoiceId, saleInvoiceId))
+
+        let totalCogs = 0
+        for (const line of lines) {
+          const cost = await readInventoryCost(tx, tenantId, invoice.branchId, line.sku)
+          totalCogs += cost * line.quantity
+        }
+        totalCogs = Math.round(totalCogs * 100) / 100
+
         const result = await postJournalEntryInTx(tx, {
           tenantId,
           branchId: invoice.branchId,
@@ -223,6 +245,12 @@ export function createAccountingService(db: Db): AccountingService {
             { accountKey: 'cash', debit: total },
             { accountKey: 'sales_revenue', credit: netRevenue },
             ...(taxTotal > 0 ? [{ accountKey: 'output_tax_payable' as const, credit: taxTotal }] : []),
+            ...(totalCogs > 0
+              ? [
+                  { accountKey: 'cogs' as const, debit: totalCogs },
+                  { accountKey: 'inventory_asset' as const, credit: totalCogs },
+                ]
+              : []),
           ],
         })
 
