@@ -18,15 +18,14 @@ const NAV_ITEMS = [
   { href: '/dashboard', label: 'لوحة التحكم', icon: SquaresFour },
   { href: '/sales', label: 'المبيعات', icon: Receipt },
   { href: '/inventory', label: 'المخزون', icon: Package },
+  { href: '/purchasing', label: 'المشتريات', icon: ShoppingCart },
+  { href: '/accounting', label: 'المحاسبة', icon: Calculator },
+  { href: '/customers', label: 'العملاء', icon: Users },
+  { href: '/marketing', label: 'التسويق والعروض', icon: Megaphone },
+  { href: '/hr', label: 'الموارد البشرية', icon: UsersThree },
 ] as const
 
-const COMING_SOON_ITEMS = [
-  { label: 'المشتريات', icon: ShoppingCart },
-  { label: 'المحاسبة', icon: Calculator },
-  { label: 'العملاء', icon: Users },
-  { label: 'التسويق والعروض', icon: Megaphone },
-  { label: 'الموارد البشرية', icon: UsersThree },
-] as const
+const COMING_SOON_ITEMS = [] as const
 
 export function Sidebar() {
   const pathname = usePathname()
@@ -58,22 +57,6 @@ export function Sidebar() {
               <Icon size={18} weight={active ? 'fill' : 'regular'} />
               {item.label}
             </Link>
-          )
-        })}
-
-        <div className="mt-4 mb-1 px-3 text-[11px] font-medium text-[color:var(--text-tertiary)]">
-          قريباً
-        </div>
-        {COMING_SOON_ITEMS.map((item) => {
-          const Icon = item.icon
-          return (
-            <div
-              key={item.label}
-              className="flex cursor-not-allowed items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-[color:var(--text-tertiary)] opacity-60"
-            >
-              <Icon size={18} />
-              {item.label}
-            </div>
           )
         })}
       </nav>
