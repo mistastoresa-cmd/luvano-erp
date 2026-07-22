@@ -5,6 +5,9 @@ import { resolveDashboardSession } from '@/lib/authz/session'
 import { createCustomersService } from '@/lib/customers/service'
 import { ForbiddenError } from '@/lib/authz/errors'
 import { Card, CardContent } from '@/components/ui/card'
+import { PageHeader } from '@/components/app-shell/page-header'
+import { AddResourceDialog } from '@/components/forms/resource-form'
+import { createCustomerAction } from './actions'
 import {
   Table,
   TableHead,
@@ -31,12 +34,23 @@ export default async function CustomersPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-lg font-semibold text-[color:var(--text-primary)]">العملاء</h1>
-        <p className="mt-1 text-sm text-[color:var(--text-tertiary)]">
-          قاعدة عملاء المتجر — من نقاط البيع ومن سلة
-        </p>
-      </div>
+      <PageHeader
+        title="العملاء"
+        subtitle="قاعدة عملاء المتجر — من نقاط البيع ومن سلة"
+        action={
+          <AddResourceDialog
+            title="إضافة عميل"
+            triggerLabel="إضافة عميل"
+            action={createCustomerAction}
+            fields={[
+              { name: 'name', label: 'الاسم', required: true },
+              { name: 'phone', label: 'الجوال', type: 'tel' },
+              { name: 'email', label: 'البريد', type: 'email' },
+              { name: 'notes', label: 'ملاحظات' },
+            ]}
+          />
+        }
+      />
 
       {denied ? (
         <Card>

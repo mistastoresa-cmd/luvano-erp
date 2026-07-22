@@ -6,6 +6,9 @@ import { resolveDashboardSession } from '@/lib/authz/session'
 import { coupons } from '@/db/schema'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { PageHeader } from '@/components/app-shell/page-header'
+import { AddResourceDialog } from '@/components/forms/resource-form'
+import { createCouponAction } from './actions'
 import {
   Table,
   TableHead,
@@ -35,10 +38,32 @@ export default async function MarketingPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-lg font-semibold text-[color:var(--text-primary)]">التسويق والعروض</h1>
-        <p className="mt-1 text-sm text-[color:var(--text-tertiary)]">كوبونات الخصم وحالتها</p>
-      </div>
+      <PageHeader
+        title="التسويق والعروض"
+        subtitle="كوبونات الخصم وحالتها"
+        action={
+          <AddResourceDialog
+            title="إضافة كوبون"
+            triggerLabel="إضافة كوبون"
+            action={createCouponAction}
+            fields={[
+              { name: 'code', label: 'كود الكوبون', required: true, placeholder: 'EID2026' },
+              {
+                name: 'discountType',
+                label: 'نوع الخصم',
+                type: 'select',
+                required: true,
+                options: [
+                  { value: 'percentage', label: 'نسبة مئوية (%)' },
+                  { value: 'fixed_amount', label: 'مبلغ ثابت (ر.س)' },
+                ],
+              },
+              { name: 'discountValue', label: 'قيمة الخصم', type: 'number', required: true },
+              { name: 'maxUses', label: 'أقصى عدد استخدامات (اختياري)', type: 'number' },
+            ]}
+          />
+        }
+      />
 
       <Card>
         <Table>

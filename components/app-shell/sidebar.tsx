@@ -6,11 +6,14 @@ import {
   SquaresFour,
   Receipt,
   Package,
+  Tag,
   ShoppingCart,
+  Truck,
   Calculator,
   Users,
   Megaphone,
   UsersThree,
+  Buildings,
 } from '@phosphor-icons/react'
 import { cn } from '@/components/ui/utils'
 
@@ -18,14 +21,15 @@ const NAV_ITEMS = [
   { href: '/dashboard', label: 'لوحة التحكم', icon: SquaresFour },
   { href: '/sales', label: 'المبيعات', icon: Receipt },
   { href: '/inventory', label: 'المخزون', icon: Package },
+  { href: '/products', label: 'المنتجات', icon: Tag },
   { href: '/purchasing', label: 'المشتريات', icon: ShoppingCart },
+  { href: '/suppliers', label: 'الموردون', icon: Truck },
   { href: '/accounting', label: 'المحاسبة', icon: Calculator },
   { href: '/customers', label: 'العملاء', icon: Users },
   { href: '/marketing', label: 'التسويق والعروض', icon: Megaphone },
   { href: '/hr', label: 'الموارد البشرية', icon: UsersThree },
+  { href: '/branches', label: 'الفروع', icon: Buildings },
 ] as const
-
-const COMING_SOON_ITEMS = [] as const
 
 export function Sidebar() {
   const pathname = usePathname()

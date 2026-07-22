@@ -6,6 +6,9 @@ import { createEmployeesService } from '@/lib/employees/service'
 import { ForbiddenError } from '@/lib/authz/errors'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { PageHeader } from '@/components/app-shell/page-header'
+import { AddResourceDialog } from '@/components/forms/resource-form'
+import { createEmployeeAction } from './actions'
 import {
   Table,
   TableHead,
@@ -38,10 +41,30 @@ export default async function HRPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-lg font-semibold text-[color:var(--text-primary)]">الموارد البشرية</h1>
-        <p className="mt-1 text-sm text-[color:var(--text-tertiary)]">سجل الموظفين وبياناتهم الوظيفية</p>
-      </div>
+      <PageHeader
+        title="الموارد البشرية"
+        subtitle="سجل الموظفين وبياناتهم الوظيفية"
+        action={
+          denied ? undefined : (
+            <AddResourceDialog
+              title="إضافة موظف"
+              triggerLabel="إضافة موظف"
+              action={createEmployeeAction}
+              fields={[
+                { name: 'name', label: 'الاسم', required: true },
+                { name: 'hireDate', label: 'تاريخ التعيين', type: 'date', required: true },
+                { name: 'baseSalary', label: 'الراتب الأساسي', type: 'number', required: true },
+                { name: 'jobTitle', label: 'المسمى الوظيفي' },
+                { name: 'department', label: 'القسم' },
+                { name: 'phone', label: 'الجوال', type: 'tel' },
+                { name: 'email', label: 'البريد', type: 'email' },
+                { name: 'nationalId', label: 'الهوية/الإقامة' },
+                { name: 'ibanNumber', label: 'الآيبان' },
+              ]}
+            />
+          )
+        }
+      />
 
       {denied ? (
         <Card>
