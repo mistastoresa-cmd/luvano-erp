@@ -1,11 +1,30 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { put } from '@vercel/blob'
 import { getDb } from '@/db/client'
 import { requireActionSession, type ActionState } from '@/lib/authz/action-session'
 import { createProductsService } from '@/lib/products/service'
 import { ForbiddenError } from '@/lib/authz/errors'
 import type { CreateProductVariantInput } from '@/lib/products/types'
+
+// Uploads the product image to Vercel Blob and returns its public URL.
+// Returns undefined when there's no file, or when Blob isn't configured
+// (local dev without a token) — the product still saves, just without an
+// image, rather than failing the whole create.
+async function uploadProductImage(
+  file: FormDataEntryValue | null,
+  tenantId: string
+): Promise<string | undefined> {
+  if (!(file instanceof File) || file.size === 0) return undefined
+  if (!process.env.BLOB_READ_WRITE_TOKEN) return undefined
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+  const blob = await put(`products/${tenantId}/${Date.now()}-${safeName}`, file, {
+    access: 'public',
+    addRandomSuffix: true,
+  })
+  return blob.url
+}
 
 function str(v: FormDataEntryValue | null): string | undefined {
   const s = String(v ?? '').trim()
@@ -65,6 +84,8 @@ export async function createProductAction(
       })
     }
 
+    const imageUrl = await uploadProductImage(formData.get('image'), tenantId)
+
     const db = await getDb()
     await createProductsService(db).createProduct(context, {
       tenantId,
@@ -74,6 +95,7 @@ export async function createProductAction(
       brand: str(formData.get('brand')),
       unit: str(formData.get('unit')) ?? 'piece',
       description: str(formData.get('description')),
+      imageUrl,
       variants,
     })
     revalidatePath('/products')

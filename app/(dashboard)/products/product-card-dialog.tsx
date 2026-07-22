@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import type { ActionState } from '@/lib/authz/action-session'
 import { createProductAction } from './actions'
+import { ImageDropzone } from './image-dropzone'
 
 const UNITS = [
   { value: 'piece', label: 'قطعة' },
@@ -21,6 +22,7 @@ interface VariantRow {
   id: number
   attribute: string
   sku: string
+  skuTouched: boolean
   barcode: string
   costPrice: string
   sellPrice: string
@@ -28,7 +30,29 @@ interface VariantRow {
 }
 
 function emptyVariant(id: number): VariantRow {
-  return { id, attribute: '', sku: '', barcode: '', costPrice: '', sellPrice: '', reorderLevel: '' }
+  return {
+    id,
+    attribute: '',
+    sku: '',
+    skuTouched: false,
+    barcode: '',
+    costPrice: '',
+    sellPrice: '',
+    reorderLevel: '',
+  }
+}
+
+// The auto SKU for a variant that the user hasn't manually overridden:
+// parent base code + sequence suffix (base-1, base-2…). A single-variant
+// (simple) product just uses the base code as-is.
+function autoSku(base: string, idx: number, count: number): string {
+  const b = base.trim()
+  if (!b) return ''
+  return count > 1 ? `${b}-${idx + 1}` : b
+}
+
+function resolveSku(v: VariantRow, base: string, idx: number, count: number): string {
+  return v.skuTouched ? v.sku : autoSku(base, idx, count)
 }
 
 function Field({
@@ -58,7 +82,9 @@ function Field({
 export function ProductCardDialog() {
   const [open, setOpen] = useState(false)
   const [nextId, setNextId] = useState(2)
+  const [baseSku, setBaseSku] = useState('')
   const [variants, setVariants] = useState<VariantRow[]>([emptyVariant(1)])
+  const [imageFile, setImageFile] = useState<File | null>(null)
   const [state, formAction, pending] = useActionState<ActionState, FormData>(createProductAction, {
     ok: false,
   })
@@ -66,7 +92,9 @@ export function ProductCardDialog() {
   useEffect(() => {
     if (state.ok) {
       setOpen(false)
+      setBaseSku('')
       setVariants([emptyVariant(1)])
+      setImageFile(null)
       setNextId(2)
     }
   }, [state.ok])
@@ -82,7 +110,8 @@ export function ProductCardDialog() {
     setVariants((rows) => (rows.length > 1 ? rows.filter((r) => r.id !== id) : rows))
   }
 
-  const isMulti = variants.length > 1
+  const count = variants.length
+  const isMulti = count > 1
 
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
@@ -101,7 +130,7 @@ export function ProductCardDialog() {
                 كرت صنف جديد
               </Dialog.Title>
               <p className="text-xs text-[color:var(--text-tertiary)]">
-                منتج رئيسي واحد + متغيّر أو أكثر (أحجام/ألوان) — كل متغيّر له SKU وسعر
+                منتج رئيسي واحد + متغيّر أو أكثر (أحجام/ألوان) — رموز المتغيرات تُشتق تلقائياً من الرمز الأساسي
               </p>
             </div>
             <Dialog.Close className="rounded-md p-1 text-[color:var(--text-tertiary)] hover:bg-[color:var(--surface-sunken)]">
@@ -111,9 +140,14 @@ export function ProductCardDialog() {
 
           <form
             action={(fd) => {
-              // Serialize the dynamic variant rows into the hidden field the
-              // Server Action parses (product-card-dialog -> actions.ts).
-              fd.set('variantsJson', JSON.stringify(variants))
+              // Resolve each variant's effective SKU (auto or overridden) and
+              // serialize into the hidden field the Server Action parses.
+              const resolved = variants.map((v, idx) => ({
+                ...v,
+                sku: resolveSku(v, baseSku, idx, count),
+              }))
+              fd.set('variantsJson', JSON.stringify(resolved))
+              if (imageFile) fd.set('image', imageFile)
               return formAction(fd)
             }}
             className="space-y-4"
@@ -129,6 +163,21 @@ export function ProductCardDialog() {
               <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
                 <Field name="name" label="اسم المنتج" required placeholder="عود ملكي فاخر" />
                 <Field name="nameEn" label="الاسم بالإنجليزية" placeholder="Royal Oud" />
+                <div>
+                  <Label htmlFor="baseSku">
+                    الرمز الأساسي (Base SKU)<span className="text-danger-600"> *</span>
+                  </Label>
+                  <Input
+                    id="baseSku"
+                    value={baseSku}
+                    onChange={(e) => setBaseSku(e.target.value)}
+                    placeholder="MISTA-OUD"
+                    required
+                  />
+                  <p className="mt-1 text-[11px] text-[color:var(--text-tertiary)]">
+                    تُشتق منه رموز المتغيرات: {baseSku ? `${baseSku}-1، ${baseSku}-2…` : 'مثال: MISTA-OUD-1'}
+                  </p>
+                </div>
                 <Field name="category" label="التصنيف" placeholder="عطور رجالية" />
                 <Field name="brand" label="العلامة التجارية" placeholder="ميستا" />
                 <div>
@@ -156,6 +205,12 @@ export function ProductCardDialog() {
                   />
                   خاضع لضريبة القيمة المضافة (15%)
                 </label>
+                <div className="sm:col-span-2">
+                  <Label>صورة المنتج</Label>
+                  <div className="mt-1">
+                    <ImageDropzone onFile={setImageFile} />
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -175,92 +230,99 @@ export function ProductCardDialog() {
               </div>
 
               <div className="space-y-3">
-                {variants.map((v, idx) => (
-                  <div
-                    key={v.id}
-                    className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-sunken)] p-3"
-                  >
-                    <div className="mb-2 flex items-center justify-between">
-                      <span className="text-xs font-medium text-[color:var(--text-tertiary)]">
-                        متغيّر #{idx + 1}
-                      </span>
-                      {variants.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => removeVariant(v.id)}
-                          className="rounded p-1 text-danger-600 hover:bg-danger-500/10"
-                          aria-label="حذف المتغيّر"
-                        >
-                          <Trash size={15} />
-                        </button>
-                      )}
-                    </div>
-                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                      {isMulti && (
-                        <div className="sm:col-span-2">
-                          <Label>الخاصية (الحجم/اللون)</Label>
+                {variants.map((v, idx) => {
+                  const skuValue = resolveSku(v, baseSku, idx, count)
+                  return (
+                    <div
+                      key={v.id}
+                      className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-sunken)] p-3"
+                    >
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className="text-xs font-medium text-[color:var(--text-tertiary)]">
+                          متغيّر #{idx + 1}
+                        </span>
+                        {isMulti && (
+                          <button
+                            type="button"
+                            onClick={() => removeVariant(v.id)}
+                            className="rounded p-1 text-danger-600 hover:bg-danger-500/10"
+                            aria-label="حذف المتغيّر"
+                          >
+                            <Trash size={15} />
+                          </button>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                        {isMulti && (
+                          <div className="sm:col-span-2">
+                            <Label>الخاصية (الحجم/اللون)</Label>
+                            <Input
+                              value={v.attribute}
+                              onChange={(e) => updateVariant(v.id, { attribute: e.target.value })}
+                              placeholder="مثال: 50 مل"
+                            />
+                          </div>
+                        )}
+                        <div>
+                          <Label>
+                            رمز SKU<span className="text-danger-600"> *</span>
+                            <span className="mr-1 text-[10px] font-normal text-[color:var(--text-tertiary)]">
+                              (تلقائي — قابل للتعديل)
+                            </span>
+                          </Label>
                           <Input
-                            value={v.attribute}
-                            onChange={(e) => updateVariant(v.id, { attribute: e.target.value })}
-                            placeholder="مثال: 50 مل"
+                            value={skuValue}
+                            onChange={(e) =>
+                              updateVariant(v.id, { sku: e.target.value, skuTouched: true })
+                            }
+                            placeholder="يُشتق من الرمز الأساسي"
                           />
                         </div>
-                      )}
-                      <div>
-                        <Label>
-                          رمز SKU<span className="text-danger-600"> *</span>
-                        </Label>
-                        <Input
-                          value={v.sku}
-                          onChange={(e) => updateVariant(v.id, { sku: e.target.value })}
-                          placeholder="MISTA-OUD-50"
-                          required
-                        />
-                      </div>
-                      <div>
-                        <Label>الباركود</Label>
-                        <Input
-                          value={v.barcode}
-                          onChange={(e) => updateVariant(v.id, { barcode: e.target.value })}
-                          placeholder="6281000000000"
-                        />
-                      </div>
-                      <div>
-                        <Label>سعر التكلفة (ر.س)</Label>
-                        <Input
-                          type="number"
-                          step="any"
-                          value={v.costPrice}
-                          onChange={(e) => updateVariant(v.id, { costPrice: e.target.value })}
-                          placeholder="0.00"
-                        />
-                      </div>
-                      <div>
-                        <Label>سعر البيع (ر.س)</Label>
-                        <Input
-                          type="number"
-                          step="any"
-                          value={v.sellPrice}
-                          onChange={(e) => updateVariant(v.id, { sellPrice: e.target.value })}
-                          placeholder="0.00"
-                        />
-                      </div>
-                      <div>
-                        <Label>حد إعادة الطلب</Label>
-                        <Input
-                          type="number"
-                          step="any"
-                          value={v.reorderLevel}
-                          onChange={(e) => updateVariant(v.id, { reorderLevel: e.target.value })}
-                          placeholder="0"
-                        />
+                        <div>
+                          <Label>الباركود</Label>
+                          <Input
+                            value={v.barcode}
+                            onChange={(e) => updateVariant(v.id, { barcode: e.target.value })}
+                            placeholder="6281000000000"
+                          />
+                        </div>
+                        <div>
+                          <Label>سعر التكلفة (ر.س)</Label>
+                          <Input
+                            type="number"
+                            step="any"
+                            value={v.costPrice}
+                            onChange={(e) => updateVariant(v.id, { costPrice: e.target.value })}
+                            placeholder="0.00"
+                          />
+                        </div>
+                        <div>
+                          <Label>سعر البيع (ر.س)</Label>
+                          <Input
+                            type="number"
+                            step="any"
+                            value={v.sellPrice}
+                            onChange={(e) => updateVariant(v.id, { sellPrice: e.target.value })}
+                            placeholder="0.00"
+                          />
+                        </div>
+                        <div>
+                          <Label>حد إعادة الطلب</Label>
+                          <Input
+                            type="number"
+                            step="any"
+                            value={v.reorderLevel}
+                            onChange={(e) => updateVariant(v.id, { reorderLevel: e.target.value })}
+                            placeholder="0"
+                          />
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
               <p className="mt-2 text-[11px] text-[color:var(--text-tertiary)]">
-                منتج بسيط؟ اترك متغيّراً واحداً. منتج بأحجام/ألوان؟ أضف متغيّراً لكل واحد.
+                منتج بسيط؟ اترك متغيّراً واحداً (يأخذ الرمز الأساسي كما هو). منتج بأحجام؟ أضف متغيّراً لكل واحد.
               </p>
             </div>
 

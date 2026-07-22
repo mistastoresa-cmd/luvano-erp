@@ -39,6 +39,7 @@ export default async function ProductsPage() {
       productName: products.name,
       brand: products.brand,
       category: products.category,
+      imageUrl: products.imageUrl,
     })
     .from(productVariants)
     .innerJoin(products, eq(productVariants.productId, products.id))
@@ -57,6 +58,7 @@ export default async function ProductsPage() {
         <Table>
           <TableHead>
             <TableRow>
+              <TableHeaderCell></TableHeaderCell>
               <TableHeaderCell>الصنف</TableHeaderCell>
               <TableHeaderCell>SKU / الباركود</TableHeaderCell>
               <TableHeaderCell>العلامة</TableHeaderCell>
@@ -68,6 +70,20 @@ export default async function ProductsPage() {
           <TableBody>
             {rows.map((p) => (
               <TableRow key={p.variantId}>
+                <TableCell>
+                  {p.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={p.imageUrl}
+                      alt={p.productName}
+                      className="h-10 w-10 rounded-md border border-[color:var(--border-subtle)] object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-10 w-10 items-center justify-center rounded-md border border-[color:var(--border-subtle)] bg-[color:var(--surface-sunken)] text-[10px] text-[color:var(--text-tertiary)]">
+                      —
+                    </div>
+                  )}
+                </TableCell>
                 <TableCell>
                   <div className="font-medium">{p.productName}</div>
                   {p.category && (
@@ -94,7 +110,7 @@ export default async function ProductsPage() {
             ))}
             {rows.length === 0 && (
               <TableRow>
-                <TableCell colSpan={6} className="py-10 text-center text-[color:var(--text-tertiary)]">
+                <TableCell colSpan={7} className="py-10 text-center text-[color:var(--text-tertiary)]">
                   لا توجد أصناف بعد — أضف أول كرت صنف للبدء.
                 </TableCell>
               </TableRow>
