@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, type FormEvent } from 'react'
-import { useRouter } from 'next/navigation'
 import { authClient } from '@/lib/auth/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -9,7 +8,6 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
 
 export default function LoginPage() {
-  const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -20,13 +18,17 @@ export default function LoginPage() {
     setError(null)
     setLoading(true)
     const { error: signInError } = await authClient.signIn.email({ email, password })
-    setLoading(false)
     if (signInError) {
+      setLoading(false)
       setError('البريد الإلكتروني أو كلمة المرور غير صحيحة.')
       return
     }
-    router.push('/dashboard')
-    router.refresh()
+    // Full-document navigation, not router.push: Next's client Router Cache
+    // keyed the /dashboard RSC payload before the auth cookie existed (from
+    // this same page's prefetch), so a soft navigation replays that stale
+    // "no session -> redirect to /login" response and bounces straight back.
+    // A hard load re-fetches /dashboard with the cookie now present.
+    window.location.assign('/dashboard')
   }
 
   return (

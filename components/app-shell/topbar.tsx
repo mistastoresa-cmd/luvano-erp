@@ -1,7 +1,6 @@
 'use client'
 
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
-import { useRouter } from 'next/navigation'
 import { CaretDown, SignOut, UserCircle } from '@phosphor-icons/react'
 import { authClient } from '@/lib/auth/client'
 import { Badge } from '@/components/ui/badge'
@@ -23,12 +22,9 @@ export function Topbar({
   userName: string
   role: string
 }) {
-  const router = useRouter()
-
   async function handleSignOut() {
     await authClient.signOut()
-    router.push('/login')
-    router.refresh()
+    window.location.assign('/login')
   }
 
   return (
