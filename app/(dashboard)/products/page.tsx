@@ -5,9 +5,9 @@ import { getDb } from '@/db/client'
 import { resolveDashboardSession } from '@/lib/authz/session'
 import { products, productVariants } from '@/db/schema'
 import { Card } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import { PageHeader } from '@/components/app-shell/page-header'
-import { AddResourceDialog } from '@/components/forms/resource-form'
-import { createProductAction } from './actions'
+import { ProductCardDialog } from './product-card-dialog'
 import {
   Table,
   TableHead,
@@ -16,6 +16,11 @@ import {
   TableHeaderCell,
   TableCell,
 } from '@/components/ui/table'
+
+function money(v: string | null): string {
+  if (v == null) return '—'
+  return `${Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ر.س`
+}
 
 export default async function ProductsPage() {
   const session = await resolveDashboardSession(await headers())
@@ -27,7 +32,12 @@ export default async function ProductsPage() {
     .select({
       variantId: productVariants.id,
       sku: productVariants.sku,
+      barcode: productVariants.barcode,
+      sellPrice: productVariants.sellPrice,
+      costPrice: productVariants.costPrice,
+      reorderLevel: productVariants.reorderLevel,
       productName: products.name,
+      brand: products.brand,
       category: products.category,
     })
     .from(productVariants)
@@ -39,42 +49,53 @@ export default async function ProductsPage() {
     <div className="space-y-6">
       <PageHeader
         title="المنتجات"
-        subtitle="كتالوج المنتجات وأصنافها (SKU) — الأساس للمخزون والمبيعات"
-        action={
-          <AddResourceDialog
-            title="إضافة منتج"
-            triggerLabel="إضافة منتج"
-            action={createProductAction}
-            fields={[
-              { name: 'name', label: 'اسم المنتج', required: true, placeholder: 'عود ملكي' },
-              { name: 'sku', label: 'SKU', required: true, placeholder: 'MISTA-OUD-100' },
-              { name: 'category', label: 'التصنيف (اختياري)', placeholder: 'عطور رجالية' },
-            ]}
-          />
-        }
+        subtitle="كتالوج الأصناف — كرت صنف كامل بالتسعير والترميز والمخزون"
+        action={<ProductCardDialog />}
       />
 
       <Card>
         <Table>
           <TableHead>
             <TableRow>
-              <TableHeaderCell>المنتج</TableHeaderCell>
-              <TableHeaderCell>SKU</TableHeaderCell>
-              <TableHeaderCell>التصنيف</TableHeaderCell>
+              <TableHeaderCell>الصنف</TableHeaderCell>
+              <TableHeaderCell>SKU / الباركود</TableHeaderCell>
+              <TableHeaderCell>العلامة</TableHeaderCell>
+              <TableHeaderCell className="text-end">التكلفة</TableHeaderCell>
+              <TableHeaderCell className="text-end">سعر البيع</TableHeaderCell>
+              <TableHeaderCell className="text-end">حد الطلب</TableHeaderCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {rows.map((p) => (
               <TableRow key={p.variantId}>
-                <TableCell className="font-medium">{p.productName}</TableCell>
-                <TableCell className="font-mono text-xs">{p.sku}</TableCell>
-                <TableCell>{p.category ?? '—'}</TableCell>
+                <TableCell>
+                  <div className="font-medium">{p.productName}</div>
+                  {p.category && (
+                    <div className="text-[11px] text-[color:var(--text-tertiary)]">{p.category}</div>
+                  )}
+                </TableCell>
+                <TableCell>
+                  <div className="font-mono text-xs">{p.sku}</div>
+                  {p.barcode && (
+                    <div className="font-mono text-[11px] text-[color:var(--text-tertiary)]">
+                      {p.barcode}
+                    </div>
+                  )}
+                </TableCell>
+                <TableCell>{p.brand ?? '—'}</TableCell>
+                <TableCell className="tabular-figures text-end">{money(p.costPrice)}</TableCell>
+                <TableCell className="tabular-figures text-end font-medium">
+                  {money(p.sellPrice)}
+                </TableCell>
+                <TableCell className="tabular-figures text-end">
+                  {p.reorderLevel > 0 ? <Badge variant="warning">{p.reorderLevel}</Badge> : '—'}
+                </TableCell>
               </TableRow>
             ))}
             {rows.length === 0 && (
               <TableRow>
-                <TableCell colSpan={3} className="py-10 text-center text-[color:var(--text-tertiary)]">
-                  لا توجد منتجات بعد — أضف أول منتج للبدء.
+                <TableCell colSpan={6} className="py-10 text-center text-[color:var(--text-tertiary)]">
+                  لا توجد أصناف بعد — أضف أول كرت صنف للبدء.
                 </TableCell>
               </TableRow>
             )}

@@ -1,4 +1,15 @@
-import { pgTable, uuid, text, timestamp, jsonb, uniqueIndex, index } from 'drizzle-orm/pg-core'
+import {
+  pgTable,
+  uuid,
+  text,
+  numeric,
+  integer,
+  boolean,
+  timestamp,
+  jsonb,
+  uniqueIndex,
+  index,
+} from 'drizzle-orm/pg-core'
 import { tenants } from './tenants'
 import { products } from './products'
 
@@ -26,6 +37,18 @@ export const productVariants = pgTable(
       .notNull()
       .references(() => products.id, { onDelete: 'cascade' }),
     sku: text('sku').notNull(),
+    // الباركود (EAN/UPC) — اختياري، لمسح نقطة البيع.
+    barcode: text('barcode'),
+    // سعر التكلفة القياسي المرجعي على الكرت. مستقل عن متوسط التكلفة المتحرك
+    // (inventory_balances.averageCost) المحسوب فعلياً من المشتريات — هذا رقم
+    // إرشادي يُدخله المستخدم، لا يؤثر على قيود COGS.
+    costPrice: numeric('cost_price', { precision: 12, scale: 2 }),
+    // سعر البيع للعميل — أساسي لأي عملية بيع.
+    sellPrice: numeric('sell_price', { precision: 12, scale: 2 }),
+    // خاضع لضريبة القيمة المضافة (15%).
+    taxable: boolean('taxable').notNull().default(true),
+    // حد إعادة الطلب — تنبيه عند نزول الرصيد تحته.
+    reorderLevel: integer('reorder_level').notNull().default(0),
     // Generic key-value (e.g. {"color":"black","size":"40"}) rather than
     // fixed color/size columns — variant axes differ by business type
     // (clothes: color+size; perfume: volume; electronics: storage/color...).

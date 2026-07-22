@@ -92,6 +92,13 @@
       "when": 1784663044697,
       "tag": "0012_stiff_major_mapleleaf",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1784764061880,
+      "tag": "0013_spicy_skin",
+      "breakpoints": true
     }
   ]
 }

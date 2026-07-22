@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, index } from 'drizzle-orm/pg-core'
+import { pgTable, uuid, text, boolean, timestamp, index } from 'drizzle-orm/pg-core'
 import { tenants } from './tenants'
 
 // The "parent" in the parent/child product model — a real product row exists
@@ -15,7 +15,18 @@ export const products = pgTable(
       .notNull()
       .references(() => tenants.id),
     name: text('name').notNull(),
+    // English name — optional, for bilingual catalogs / Salla sync.
+    nameEn: text('name_en'),
     category: text('category'),
+    // العلامة التجارية (e.g. "Dior", "ميستا").
+    brand: text('brand'),
+    // وحدة القياس (قطعة، مل، علبة...). Default 'piece' at the app layer.
+    unit: text('unit'),
+    description: text('description'),
+    // رابط صورة المنتج (URL). رفع الصور نفسه خارج نطاق هذي المرحلة — نخزّن
+    // الرابط فقط، تُدخله يدوياً أو يأتي من مزامنة سلة لاحقاً.
+    imageUrl: text('image_url'),
+    isActive: boolean('is_active').notNull().default(true),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index('products_tenant_idx').on(table.tenantId)]

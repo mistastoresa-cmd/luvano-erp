@@ -2,13 +2,23 @@ import type { CallerContext } from '../authz/types'
 
 export interface CreateProductVariantInput {
   sku: string
+  barcode?: string
+  costPrice?: number
+  sellPrice?: number
+  taxable?: boolean
+  reorderLevel?: number
   attributes?: Record<string, string>
 }
 
 export interface CreateProductInput {
   tenantId: string
   name: string
+  nameEn?: string
   category?: string
+  brand?: string
+  unit?: string
+  description?: string
+  imageUrl?: string
   // At least one — a simple product passes a single variant with no
   // attributes (e.g. [{ sku: 'PERFUME-100ML' }]); a clothing/shoes product
   // passes one per color/size combination.

@@ -25,7 +25,16 @@ export function createProductsService(db: Db): ProductsService {
       return db.transaction(async (tx) => {
         const [product] = await tx
           .insert(products)
-          .values({ tenantId: input.tenantId, name: input.name, category: input.category })
+          .values({
+            tenantId: input.tenantId,
+            name: input.name,
+            nameEn: input.nameEn,
+            category: input.category,
+            brand: input.brand,
+            unit: input.unit,
+            description: input.description,
+            imageUrl: input.imageUrl,
+          })
           .returning({ id: products.id })
 
         const variantRows = await tx
@@ -35,6 +44,11 @@ export function createProductsService(db: Db): ProductsService {
               tenantId: input.tenantId,
               productId: product.id,
               sku: v.sku,
+              barcode: v.barcode,
+              costPrice: v.costPrice != null ? String(v.costPrice) : undefined,
+              sellPrice: v.sellPrice != null ? String(v.sellPrice) : undefined,
+              taxable: v.taxable ?? true,
+              reorderLevel: v.reorderLevel ?? 0,
               attributes: v.attributes ?? {},
             }))
           )
