@@ -13,3 +13,6 @@ out/
 .DS_Store
 *.log
 *.tsbuildinfo
+
+# local dev database (persisted pglite, see db/dev-pglite.ts)
+.data/

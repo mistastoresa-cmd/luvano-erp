@@ -1,7 +1,9 @@
 import { betterAuth } from 'better-auth'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { organization } from 'better-auth/plugins'
+import { eq } from 'drizzle-orm'
 import { authDb } from './db'
+import { member } from '@/db/schema'
 import * as schema from '@/db/schema'
 
 // Locked in /plan-eng-review of the RBAC plan (2026-07-21):
@@ -20,12 +22,45 @@ export const auth = betterAuth({
     provider: 'pg',
     schema,
   }),
+  // Real bug hit running provisionTenant for the first time (nothing had
+  // exercised auth.api.signUpEmail end-to-end before the dev seed script):
+  // Better Auth disables email/password sign-up by default and rejects it
+  // with EMAIL_PASSWORD_SIGN_UP_DISABLED unless explicitly enabled here.
+  emailAndPassword: {
+    enabled: true,
+  },
   session: {
     // Short TTL per the review's "short sessions + immediate invalidation"
     // decision — a revoked/changed membership takes effect on the next
     // renewal instead of lingering for a long-lived session's full duration.
     expiresIn: 60 * 30, // 30 minutes
     updateAge: 60 * 5, // refresh the cookie if used within the last 5 minutes
+  },
+  // Real bug hit testing the dashboard for the first time: provisionTenant
+  // sets activeOrganizationId directly on the signup session (see
+  // lib/auth/provisioning.ts), but every ORDINARY sign-in creates a brand
+  // new session row with no activeOrganizationId at all — nothing else in
+  // Better Auth's organization plugin sets it automatically, so a normal
+  // login left resolveDashboardSession() with no org to resolve tenantId
+  // from and the dashboard bounced straight back to /login. There's no
+  // multi-org-per-user flow yet (every member belongs to exactly one
+  // organization), so auto-activating the user's sole membership on every
+  // new session is correct today; this will need to become "pick the last-
+  // active org" once invitations/multi-tenant membership exist.
+  databaseHooks: {
+    session: {
+      create: {
+        async before(session) {
+          const [row] = await authDb
+            .select({ organizationId: member.organizationId })
+            .from(member)
+            .where(eq(member.userId, session.userId))
+            .limit(1)
+          if (!row) return
+          return { data: { ...session, activeOrganizationId: row.organizationId } }
+        },
+      },
+    },
   },
   plugins: [
     organization({

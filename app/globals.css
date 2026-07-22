@@ -1,0 +1,78 @@
+@import 'tailwindcss';
+
+/* Dark mode toggled by a `.dark` class on <html> (see components/theme-toggle.tsx),
+   not solely `prefers-color-scheme` — the founder asked for a light-by-default
+   dashboard with dark support, not "whatever the OS says". */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: var(--font-ibm-plex-arabic), 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  /* One accent, one neutral family — Color Consistency Lock. Deep indigo:
+     the standard trust/stability signal for financial software, not an
+     "AI-purple glow" (that ban is about hero-glow gradients on marketing
+     pages, not a considered brand accent for a finance product). */
+  --color-accent-50: oklch(0.96 0.02 275);
+  --color-accent-100: oklch(0.91 0.05 275);
+  --color-accent-200: oklch(0.83 0.09 275);
+  --color-accent-300: oklch(0.72 0.13 275);
+  --color-accent-400: oklch(0.62 0.16 275);
+  --color-accent-500: oklch(0.52 0.18 275);
+  --color-accent-600: oklch(0.44 0.17 275);
+  --color-accent-700: oklch(0.37 0.15 275);
+  --color-accent-800: oklch(0.3 0.12 275);
+  --color-accent-900: oklch(0.24 0.09 275);
+
+  /* Semantic status colors — used sparingly (badges, alerts), never as the
+     page accent. */
+  --color-success-500: oklch(0.6 0.14 155);
+  --color-success-600: oklch(0.5 0.13 155);
+  --color-warning-500: oklch(0.72 0.15 75);
+  --color-warning-600: oklch(0.62 0.15 70);
+  --color-danger-500: oklch(0.58 0.19 25);
+  --color-danger-600: oklch(0.5 0.19 25);
+}
+
+:root {
+  /* Off-white/off-black, never pure #fff/#000 — kills flatness. */
+  --surface: oklch(0.99 0.002 275);
+  --surface-raised: oklch(1 0 0);
+  --surface-sunken: oklch(0.965 0.003 275);
+  --border-subtle: oklch(0.9 0.005 275);
+  --border-default: oklch(0.85 0.007 275);
+  --text-primary: oklch(0.18 0.01 275);
+  --text-secondary: oklch(0.42 0.01 275);
+  --text-tertiary: oklch(0.58 0.008 275);
+}
+
+.dark {
+  --surface: oklch(0.17 0.008 275);
+  --surface-raised: oklch(0.21 0.009 275);
+  --surface-sunken: oklch(0.14 0.007 275);
+  --border-subtle: oklch(0.28 0.01 275);
+  --border-default: oklch(0.34 0.012 275);
+  --text-primary: oklch(0.95 0.003 275);
+  --text-secondary: oklch(0.75 0.006 275);
+  --text-tertiary: oklch(0.58 0.008 275);
+}
+
+html {
+  direction: rtl;
+}
+
+body {
+  background: var(--surface);
+  color: var(--text-primary);
+  font-feature-settings: 'tnum' 1;
+}
+
+/* Financial figures always read as tabular numerals, LTR, regardless of the
+   surrounding RTL flow — a mixed 1,240.50 inside Arabic text must not
+   reorder its digits. */
+.tabular-figures {
+  direction: ltr;
+  unicode-bidi: isolate;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
