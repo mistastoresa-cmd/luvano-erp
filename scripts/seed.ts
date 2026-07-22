@@ -9,14 +9,13 @@ import { config as loadEnv } from 'dotenv'
 loadEnv({ path: '.env.local' })
 
 import { getDb } from '../db/client'
-import { branches, chartOfAccounts, accountMappings } from '../db/schema'
+import { branches } from '../db/schema'
 import { provisionTenant } from '../lib/auth/provisioning'
 import { createProductsService } from '../lib/products/service'
 import { createCustomersService } from '../lib/customers/service'
 import { createLedgerService } from '../lib/ledger/service'
 import { createAccountingService } from '../lib/accounting/service'
 import { SYSTEM_CONTEXT } from '../lib/authz/types'
-import type { AccountMappingKey } from '../lib/accounting/types'
 
 const OWNER_EMAIL = 'owner@mista-demo.test'
 const OWNER_PASSWORD = 'Demo12345!'
@@ -42,28 +41,8 @@ async function main() {
     .values({ tenantId, name: 'متجر سلة', code: 'ONLINE', type: 'online' })
     .returning()
 
-  console.log('› إعداد شجرة الحسابات...')
-  const accountDefs: {
-    key: AccountMappingKey
-    code: string
-    name: string
-    type: 'asset' | 'liability' | 'revenue' | 'expense'
-  }[] = [
-    { key: 'cash', code: '1000', name: 'الصندوق والبنوك', type: 'asset' },
-    { key: 'inventory_asset', code: '1100', name: 'المخزون', type: 'asset' },
-    { key: 'accounts_receivable', code: '1200', name: 'ذمم العملاء', type: 'asset' },
-    { key: 'accounts_payable', code: '2000', name: 'ذمم الموردين', type: 'liability' },
-    { key: 'output_tax_payable', code: '2100', name: 'ضريبة القيمة المضافة المستحقة', type: 'liability' },
-    { key: 'sales_revenue', code: '4000', name: 'إيرادات المبيعات', type: 'revenue' },
-    { key: 'cogs', code: '5000', name: 'تكلفة البضاعة المباعة', type: 'expense' },
-  ]
-  for (const a of accountDefs) {
-    const [account] = await db
-      .insert(chartOfAccounts)
-      .values({ tenantId, code: a.code, name: a.name, type: a.type })
-      .returning()
-    await db.insert(accountMappings).values({ tenantId, key: a.key, accountId: account.id })
-  }
+  // شجرة الحسابات + account_mappings أصبحت تُنشأ تلقائياً داخل provisionTenant
+  // (lib/accounting/defaults.ts) لكل مستأجر جديد — لا حاجة لإنشائها هنا يدوياً.
 
   console.log('› إنشاء المنتجات...')
   const products = createProductsService(db)

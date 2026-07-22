@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm'
 import { auth } from './server'
 import { authDb } from './db'
 import { tenants, organization, member, session } from '@/db/schema'
+import { seedDefaultChartOfAccounts } from '@/lib/accounting/defaults'
 
 export interface ProvisionTenantInput {
   ownerName: string
@@ -65,6 +66,13 @@ export async function provisionTenant(input: ProvisionTenantInput): Promise<Prov
       createdAt: new Date(),
       branchAccess: JSON.stringify({ type: 'all' }),
     })
+
+    // Bootstrap the starter chart of accounts + account_mappings in the same
+    // transaction as the tenant — so a brand-new tenant can immediately post
+    // sale/purchase journal entries without a separate setup step. Runs on
+    // the same tx handle (app-schema tables live in the same physical DB as
+    // the Better Auth tables).
+    await seedDefaultChartOfAccounts(tx, tenant.id)
 
     return { tenantId: tenant.id, organizationId: org.id, userId }
   })
