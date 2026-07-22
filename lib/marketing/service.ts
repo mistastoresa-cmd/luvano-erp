@@ -2,16 +2,22 @@ import { eq, and, sql } from 'drizzle-orm'
 import { coupons } from '@/db/schema'
 import type { Db } from '@/db/client'
 import { createProductsService } from '@/lib/products/service'
+import { assertRoleAudited } from '../authz/service'
+import type { CallerContext } from '../authz/types'
 import type { MarketingService, CartLine, ValidateCouponResult, RedeemCouponResult } from './types'
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100
 }
 
+const PROMOTION_MANAGEMENT_ROLES = ['owner', 'accountant', 'branch_manager'] as const
+const CHECKOUT_ROLES = ['owner', 'accountant', 'branch_manager', 'staff'] as const
+
 export function createMarketingService(db: Db): MarketingService {
   const products = createProductsService(db)
 
   async function resolveEligibleLines(
+    context: CallerContext,
     tenantId: string,
     coupon: { targetProductId: string | null; targetVariantId: string | null },
     cartLines: CartLine[]
@@ -21,19 +27,21 @@ export function createMarketingService(db: Db): MarketingService {
     const target = coupon.targetVariantId
       ? ({ type: 'variant', variantId: coupon.targetVariantId } as const)
       : ({ type: 'product', productId: coupon.targetProductId! } as const)
-    const eligibleSkus = new Set(await products.resolveSkusForTarget(tenantId, target))
+    const eligibleSkus = new Set(await products.resolveSkusForTarget(context, tenantId, target))
     return cartLines.filter((line) => eligibleSkus.has(line.sku))
   }
 
   return {
-    async activateCoupon(tenantId: string, couponId: string): Promise<void> {
+    async activateCoupon(context: CallerContext, tenantId: string, couponId: string): Promise<void> {
+      assertRoleAudited(db, tenantId, context, [...PROMOTION_MANAGEMENT_ROLES])
       await db
         .update(coupons)
         .set({ isActive: true })
         .where(and(eq(coupons.tenantId, tenantId), eq(coupons.id, couponId)))
     },
 
-    async deactivateCoupon(tenantId: string, couponId: string): Promise<void> {
+    async deactivateCoupon(context: CallerContext, tenantId: string, couponId: string): Promise<void> {
+      assertRoleAudited(db, tenantId, context, [...PROMOTION_MANAGEMENT_ROLES])
       await db
         .update(coupons)
         .set({ isActive: false })
@@ -41,10 +49,12 @@ export function createMarketingService(db: Db): MarketingService {
     },
 
     async validateCoupon(
+      context: CallerContext,
       tenantId: string,
       code: string,
       cartLines: CartLine[]
     ): Promise<ValidateCouponResult> {
+      assertRoleAudited(db, tenantId, context, [...CHECKOUT_ROLES])
       const [coupon] = await db
         .select()
         .from(coupons)
@@ -93,7 +103,7 @@ export function createMarketingService(db: Db): MarketingService {
         }
       }
 
-      const eligibleLines = await resolveEligibleLines(tenantId, coupon, cartLines)
+      const eligibleLines = await resolveEligibleLines(context, tenantId, coupon, cartLines)
       if (eligibleLines.length === 0) {
         return {
           valid: false,
@@ -113,7 +123,8 @@ export function createMarketingService(db: Db): MarketingService {
       return { valid: true, couponId: coupon.id, eligibleLines, discountAmount }
     },
 
-    async redeemCoupon(tenantId: string, code: string): Promise<RedeemCouponResult> {
+    async redeemCoupon(context: CallerContext, tenantId: string, code: string): Promise<RedeemCouponResult> {
+      assertRoleAudited(db, tenantId, context, [...CHECKOUT_ROLES])
       // Atomic guarded increment — same pattern as
       // lib/ledger/balance.ts::applyInventoryDelta: the WHERE clause
       // (is_active AND under max_uses) is evaluated against the current row

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { createTestDb } from '../setup/db'
 import { seedTenantWithBranch } from '../setup/seed'
 import { createEmployeesService } from '@/lib/employees/service'
+import { SYSTEM_CONTEXT } from '@/lib/authz/types'
 
 describe('EmployeesService.createEmployee', () => {
   it('allocates sequential employee numbers starting at EMP-0001', async () => {
@@ -9,13 +10,13 @@ describe('EmployeesService.createEmployee', () => {
     const { tenant } = await seedTenantWithBranch(db)
     const employees = createEmployeesService(db)
 
-    const first = await employees.createEmployee({
+    const first = await employees.createEmployee(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       name: 'Ahmed Ali',
       hireDate: '2020-01-01',
       baseSalary: 5000,
     })
-    const second = await employees.createEmployee({
+    const second = await employees.createEmployee(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       name: 'Sara Mohammed',
       hireDate: '2021-01-01',
@@ -32,13 +33,13 @@ describe('EmployeesService.createEmployee', () => {
     const { tenant: tenantB } = await seedTenantWithBranch(db)
     const employees = createEmployeesService(db)
 
-    const empA = await employees.createEmployee({
+    const empA = await employees.createEmployee(SYSTEM_CONTEXT, {
       tenantId: tenantA.id,
       name: 'Employee A',
       hireDate: '2020-01-01',
       baseSalary: 5000,
     })
-    const empB = await employees.createEmployee({
+    const empB = await employees.createEmployee(SYSTEM_CONTEXT, {
       tenantId: tenantB.id,
       name: 'Employee B',
       hireDate: '2020-01-01',
@@ -54,7 +55,7 @@ describe('EmployeesService.createEmployee', () => {
     const { tenant, physicalBranch } = await seedTenantWithBranch(db)
     const employees = createEmployeesService(db)
 
-    const employee = await employees.createEmployee({
+    const employee = await employees.createEmployee(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       branchId: physicalBranch.id,
       name: 'Khalid Al-Harbi',
@@ -87,22 +88,22 @@ describe('EmployeesService — CRUD scoping', () => {
     const { tenant: otherTenant } = await seedTenantWithBranch(db)
     const employees = createEmployeesService(db)
 
-    const employee = await employees.createEmployee({
+    const employee = await employees.createEmployee(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       name: 'Ahmed Ali',
       hireDate: '2020-01-01',
       baseSalary: 5000,
     })
-    await employees.createEmployee({
+    await employees.createEmployee(SYSTEM_CONTEXT, {
       tenantId: otherTenant.id,
       name: 'Other Tenant Employee',
       hireDate: '2020-01-01',
       baseSalary: 5000,
     })
 
-    expect(await employees.getEmployee(tenant.id, employee.id)).not.toBeNull()
-    expect(await employees.getEmployee(otherTenant.id, employee.id)).toBeNull()
-    expect(await employees.listEmployees(tenant.id)).toHaveLength(1)
+    expect(await employees.getEmployee(SYSTEM_CONTEXT, tenant.id, employee.id)).not.toBeNull()
+    expect(await employees.getEmployee(SYSTEM_CONTEXT, otherTenant.id, employee.id)).toBeNull()
+    expect(await employees.listEmployees(SYSTEM_CONTEXT, tenant.id)).toHaveLength(1)
   })
 
   it('updates an employee scoped to tenant, throws on cross-tenant update', async () => {
@@ -111,18 +112,52 @@ describe('EmployeesService — CRUD scoping', () => {
     const { tenant: otherTenant } = await seedTenantWithBranch(db)
     const employees = createEmployeesService(db)
 
-    const employee = await employees.createEmployee({
+    const employee = await employees.createEmployee(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       name: 'Ahmed Ali',
       hireDate: '2020-01-01',
       baseSalary: 5000,
     })
 
-    const updated = await employees.updateEmployee(tenant.id, employee.id, { jobTitle: 'Manager' })
+    const updated = await employees.updateEmployee(SYSTEM_CONTEXT, tenant.id, employee.id, { jobTitle: 'Manager' })
     expect(updated.jobTitle).toBe('Manager')
 
     await expect(
-      employees.updateEmployee(otherTenant.id, employee.id, { jobTitle: 'Hijacked' })
+      employees.updateEmployee(SYSTEM_CONTEXT, otherTenant.id, employee.id, { jobTitle: 'Hijacked' })
     ).rejects.toThrow('Employee not found')
+  })
+})
+
+describe('EmployeesService — RBAC', () => {
+  it('rejects staff registering an employee (PII/salary data is not routine staff visibility)', async () => {
+    const db = await createTestDb()
+    const { tenant } = await seedTenantWithBranch(db)
+    const employees = createEmployeesService(db)
+    const staff = { userId: 'user-1', role: 'staff' as const, branchAccess: { type: 'all' as const } }
+
+    await expect(
+      employees.createEmployee(staff, { tenantId: tenant.id, name: 'Staff-Registered Employee', hireDate: '2026-01-01', baseSalary: 4000 })
+    ).rejects.toThrow('role "staff"')
+  })
+
+  it('rejects a branch_manager registering an employee at a branch outside their access', async () => {
+    const db = await createTestDb()
+    const { tenant, physicalBranch } = await seedTenantWithBranch(db)
+    const employees = createEmployeesService(db)
+    const outsider = {
+      userId: 'user-1',
+      role: 'branch_manager' as const,
+      branchAccess: { type: 'list' as const, branchIds: ['some-other-branch'] },
+    }
+
+    await expect(
+      employees.createEmployee(outsider, {
+        tenantId: tenant.id,
+        branchId: physicalBranch.id,
+        name: 'Employee',
+        hireDate: '2026-01-01',
+        baseSalary: 4000,
+      })
+    ).rejects.toThrow('no access to branch')
   })
 })

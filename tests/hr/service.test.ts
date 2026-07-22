@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm'
 import { createTestDb } from '../setup/db'
 import { seedTenantWithBranch } from '../setup/seed'
 import { createHrService } from '@/lib/hr/service'
+import { SYSTEM_CONTEXT } from '@/lib/authz/types'
 import { chartOfAccounts, accountMappings, employees, journalEntryLines } from '@/db/schema'
 import type { AccountMappingKey } from '@/lib/accounting/types'
 
@@ -46,13 +47,13 @@ describe('HrService.processPayrollRun', () => {
     const hr = createHrService(db)
     const employee = await seedEmployee(db, tenant.id, { baseSalary: '6000.00' })
 
-    const run = await hr.createPayrollRun({
+    const run = await hr.createPayrollRun(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       periodStart: '2026-07-01',
       periodEnd: '2026-07-31',
     })
 
-    const result = await hr.processPayrollRun(tenant.id, run.id, [
+    const result = await hr.processPayrollRun(SYSTEM_CONTEXT, tenant.id, run.id, [
       { employeeId: employee.id, allowances: 500, deductions: 200 },
     ])
 
@@ -68,12 +69,12 @@ describe('HrService.processPayrollRun', () => {
     await seedEmployee(db, tenant.id, { name: 'Active Emp' })
     await seedEmployee(db, tenant.id, { name: 'Terminated Emp', status: 'terminated' })
 
-    const run = await hr.createPayrollRun({
+    const run = await hr.createPayrollRun(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       periodStart: '2026-07-01',
       periodEnd: '2026-07-31',
     })
-    const result = await hr.processPayrollRun(tenant.id, run.id)
+    const result = await hr.processPayrollRun(SYSTEM_CONTEXT, tenant.id, run.id)
 
     expect(result.entries).toHaveLength(1)
   })
@@ -84,14 +85,14 @@ describe('HrService.processPayrollRun', () => {
     const hr = createHrService(db)
     await seedEmployee(db, tenant.id)
 
-    const run = await hr.createPayrollRun({
+    const run = await hr.createPayrollRun(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       periodStart: '2026-07-01',
       periodEnd: '2026-07-31',
     })
-    await hr.processPayrollRun(tenant.id, run.id)
+    await hr.processPayrollRun(SYSTEM_CONTEXT, tenant.id, run.id)
 
-    await expect(hr.processPayrollRun(tenant.id, run.id)).rejects.toThrow('already processed')
+    await expect(hr.processPayrollRun(SYSTEM_CONTEXT, tenant.id, run.id)).rejects.toThrow('already processed')
   })
 })
 
@@ -104,14 +105,14 @@ describe('HrService.postPayrollJournal', () => {
     const employee1 = await seedEmployee(db, tenant.id, { name: 'Emp 1', baseSalary: '4000.00' })
     const employee2 = await seedEmployee(db, tenant.id, { name: 'Emp 2', baseSalary: '3000.00' })
 
-    const run = await hr.createPayrollRun({
+    const run = await hr.createPayrollRun(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       periodStart: '2026-07-01',
       periodEnd: '2026-07-31',
     })
-    await hr.processPayrollRun(tenant.id, run.id)
+    await hr.processPayrollRun(SYSTEM_CONTEXT, tenant.id, run.id)
 
-    const result = await hr.postPayrollJournal(tenant.id, run.id)
+    const result = await hr.postPayrollJournal(SYSTEM_CONTEXT, tenant.id, run.id)
     expect(result.status).toBe('accepted')
     expect(result.totalNetPay).toBe(7000)
 
@@ -135,15 +136,15 @@ describe('HrService.postPayrollJournal', () => {
     const hr = createHrService(db)
     await seedEmployee(db, tenant.id, { baseSalary: '5000.00' })
 
-    const run = await hr.createPayrollRun({
+    const run = await hr.createPayrollRun(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       periodStart: '2026-07-01',
       periodEnd: '2026-07-31',
     })
-    await hr.processPayrollRun(tenant.id, run.id)
+    await hr.processPayrollRun(SYSTEM_CONTEXT, tenant.id, run.id)
 
-    const first = await hr.postPayrollJournal(tenant.id, run.id)
-    const second = await hr.postPayrollJournal(tenant.id, run.id)
+    const first = await hr.postPayrollJournal(SYSTEM_CONTEXT, tenant.id, run.id)
+    const second = await hr.postPayrollJournal(SYSTEM_CONTEXT, tenant.id, run.id)
 
     expect(first.status).toBe('accepted')
     expect(second.status).toBe('duplicate')
@@ -156,12 +157,25 @@ describe('HrService.postPayrollJournal', () => {
     await seedPayrollAccountMappings(db, tenant.id)
     const hr = createHrService(db)
 
-    const run = await hr.createPayrollRun({
+    const run = await hr.createPayrollRun(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       periodStart: '2026-07-01',
       periodEnd: '2026-07-31',
     })
 
-    await expect(hr.postPayrollJournal(tenant.id, run.id)).rejects.toThrow('no entries to post')
+    await expect(hr.postPayrollJournal(SYSTEM_CONTEXT, tenant.id, run.id)).rejects.toThrow('no entries to post')
+  })
+})
+
+describe('HrService — RBAC', () => {
+  it('rejects branch_manager creating a payroll run (payroll is confidential owner/accountant data)', async () => {
+    const db = await createTestDb()
+    const { tenant } = await seedTenantWithBranch(db)
+    const hr = createHrService(db)
+    const branchManager = { userId: 'user-1', role: 'branch_manager' as const, branchAccess: { type: 'all' as const } }
+
+    await expect(
+      hr.createPayrollRun(branchManager, { tenantId: tenant.id, periodStart: '2026-07-01', periodEnd: '2026-07-31' })
+    ).rejects.toThrow('role "branch_manager"')
   })
 })

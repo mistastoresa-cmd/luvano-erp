@@ -1,3 +1,5 @@
+import type { CallerContext } from '../authz/types'
+
 export interface CreateProductVariantInput {
   sku: string
   attributes?: Record<string, string>
@@ -25,7 +27,18 @@ export interface CreateProductResult {
 export type ProductTarget = { type: 'product'; productId: string } | { type: 'variant'; variantId: string }
 
 export interface ProductsService {
-  createProduct(input: CreateProductInput): Promise<CreateProductResult>
-  addVariant(tenantId: string, productId: string, variant: CreateProductVariantInput): Promise<string>
-  resolveSkusForTarget(tenantId: string, target: ProductTarget): Promise<string[]>
+  // Catalog management — a decision-level action (owner/accountant/
+  // branch_manager), not routine staff work (RBAC extension beyond the
+  // original 5-service T7 scope — see docs/ARCHITECTURE.md).
+  createProduct(context: CallerContext, input: CreateProductInput): Promise<CreateProductResult>
+  addVariant(
+    context: CallerContext,
+    tenantId: string,
+    productId: string,
+    variant: CreateProductVariantInput
+  ): Promise<string>
+  // Read-only SKU lookup — open to all 4 roles, since lib/marketing calls
+  // this internally on behalf of whatever caller (including POS staff at
+  // checkout) is validating/redeeming a coupon.
+  resolveSkusForTarget(context: CallerContext, tenantId: string, target: ProductTarget): Promise<string[]>
 }

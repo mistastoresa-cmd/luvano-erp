@@ -1,3 +1,5 @@
+import type { CallerContext } from '../authz/types'
+
 export interface CartLine {
   sku: string
   quantity: number
@@ -30,17 +32,26 @@ export interface RedeemCouponResult {
 }
 
 export interface MarketingService {
-  activateCoupon(tenantId: string, couponId: string): Promise<void>
-  deactivateCoupon(tenantId: string, couponId: string): Promise<void>
+  // Promotion management — a decision-level action (owner/accountant/
+  // branch_manager), not routine staff work.
+  activateCoupon(context: CallerContext, tenantId: string, couponId: string): Promise<void>
+  deactivateCoupon(context: CallerContext, tenantId: string, couponId: string): Promise<void>
 
   // Read-only — computes what the coupon would do against this cart without
   // consuming a use. Call this before checkout; call redeemCoupon only once
-  // the order is actually placed.
-  validateCoupon(tenantId: string, code: string, cartLines: CartLine[]): Promise<ValidateCouponResult>
+  // the order is actually placed. Open to all 4 roles (a cashier applying a
+  // coupon at POS) as well as SYSTEM_CONTEXT (storefront/webhook checkout).
+  validateCoupon(
+    context: CallerContext,
+    tenantId: string,
+    code: string,
+    cartLines: CartLine[]
+  ): Promise<ValidateCouponResult>
 
   // Atomically increments usesCount, guarded against exceeding maxUses under
   // concurrent redemptions (two customers racing for the last use of a
   // limited coupon) — same "atomic relative update" pattern as
   // lib/ledger/balance.ts::applyInventoryDelta, not a read-then-write check.
-  redeemCoupon(tenantId: string, code: string): Promise<RedeemCouponResult>
+  // Same open-access rule as validateCoupon.
+  redeemCoupon(context: CallerContext, tenantId: string, code: string): Promise<RedeemCouponResult>
 }

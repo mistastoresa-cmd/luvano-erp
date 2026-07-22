@@ -2,6 +2,8 @@ import { eq, and, sum } from 'drizzle-orm'
 import { payrollRuns, payrollEntries, employees } from '@/db/schema'
 import type { Db } from '@/db/client'
 import { postJournalEntryInTx } from '../accounting/service'
+import { assertRoleAudited } from '../authz/service'
+import type { CallerContext } from '../authz/types'
 import type {
   HrService,
   CreatePayrollRunInput,
@@ -15,9 +17,12 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100
 }
 
+const PAYROLL_ROLES = ['owner', 'accountant'] as const
+
 export function createHrService(db: Db): HrService {
   return {
-    async createPayrollRun(input: CreatePayrollRunInput): Promise<PayrollRun> {
+    async createPayrollRun(context: CallerContext, input: CreatePayrollRunInput): Promise<PayrollRun> {
+      assertRoleAudited(db, input.tenantId, context, [...PAYROLL_ROLES])
       const [run] = await db
         .insert(payrollRuns)
         .values({
@@ -30,10 +35,12 @@ export function createHrService(db: Db): HrService {
     },
 
     async processPayrollRun(
+      context: CallerContext,
       tenantId: string,
       payrollRunId: string,
       adjustments: EmployeePayrollAdjustment[] = []
     ): Promise<ProcessPayrollRunResult> {
+      assertRoleAudited(db, tenantId, context, [...PAYROLL_ROLES])
       return db.transaction(async (tx) => {
         const [run] = await tx
           .select()
@@ -92,9 +99,11 @@ export function createHrService(db: Db): HrService {
     },
 
     async postPayrollJournal(
+      context: CallerContext,
       tenantId: string,
       payrollRunId: string
     ): Promise<PostPayrollJournalResult> {
+      assertRoleAudited(db, tenantId, context, [...PAYROLL_ROLES])
       return db.transaction(async (tx) => {
         const [run] = await tx
           .select()

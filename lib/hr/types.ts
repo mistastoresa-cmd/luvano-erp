@@ -1,3 +1,5 @@
+import type { CallerContext } from '../authz/types'
+
 export interface CreatePayrollRunInput {
   tenantId: string
   periodStart: string
@@ -40,8 +42,12 @@ export interface PostPayrollJournalResult {
   totalNetPay: number
 }
 
+// Payroll is confidential financial + HR data — owner/accountant only,
+// unlike the day-to-day HR services (employees, leave, tasks) open to
+// branch_manager (RBAC extension beyond the original T7 scope — see
+// docs/ARCHITECTURE.md).
 export interface HrService {
-  createPayrollRun(input: CreatePayrollRunInput): Promise<PayrollRun>
+  createPayrollRun(context: CallerContext, input: CreatePayrollRunInput): Promise<PayrollRun>
 
   // Snapshots each active employee's current baseSalary (+ any per-employee
   // allowances/deductions override) into payroll_entries, computes netPay,
@@ -49,6 +55,7 @@ export interface HrService {
   // employees.baseSalary never retroactively changes an already-processed
   // run's figures.
   processPayrollRun(
+    context: CallerContext,
     tenantId: string,
     payrollRunId: string,
     adjustments?: EmployeePayrollAdjustment[]
@@ -57,5 +64,9 @@ export interface HrService {
   // Debit salary_expense, credit salary_payable for sum(netPay) across the
   // run's entries — one balanced journal entry per run, not one per
   // employee, since that's how a real payroll batch reads on the books.
-  postPayrollJournal(tenantId: string, payrollRunId: string): Promise<PostPayrollJournalResult>
+  postPayrollJournal(
+    context: CallerContext,
+    tenantId: string,
+    payrollRunId: string
+  ): Promise<PostPayrollJournalResult>
 }

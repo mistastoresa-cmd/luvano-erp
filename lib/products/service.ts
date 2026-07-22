@@ -1,6 +1,8 @@
 import { eq, and } from 'drizzle-orm'
 import { products, productVariants } from '@/db/schema'
 import type { Db } from '@/db/client'
+import { assertRoleAudited } from '../authz/service'
+import type { CallerContext } from '../authz/types'
 import type {
   ProductsService,
   CreateProductInput,
@@ -9,9 +11,13 @@ import type {
   ProductTarget,
 } from './types'
 
+const CATALOG_ROLES = ['owner', 'accountant', 'branch_manager'] as const
+const CATALOG_READ_ROLES = ['owner', 'accountant', 'branch_manager', 'staff'] as const
+
 export function createProductsService(db: Db): ProductsService {
   return {
-    async createProduct(input: CreateProductInput): Promise<CreateProductResult> {
+    async createProduct(context: CallerContext, input: CreateProductInput): Promise<CreateProductResult> {
+      assertRoleAudited(db, input.tenantId, context, [...CATALOG_ROLES])
       if (input.variants.length === 0) {
         throw new Error('createProduct requires at least one variant (a simple product has exactly one)')
       }
@@ -39,10 +45,12 @@ export function createProductsService(db: Db): ProductsService {
     },
 
     async addVariant(
+      context: CallerContext,
       tenantId: string,
       productId: string,
       variant: CreateProductVariantInput
     ): Promise<string> {
+      assertRoleAudited(db, tenantId, context, [...CATALOG_ROLES])
       const [row] = await db
         .insert(productVariants)
         .values({
@@ -55,7 +63,12 @@ export function createProductsService(db: Db): ProductsService {
       return row.id
     },
 
-    async resolveSkusForTarget(tenantId: string, target: ProductTarget): Promise<string[]> {
+    async resolveSkusForTarget(
+      context: CallerContext,
+      tenantId: string,
+      target: ProductTarget
+    ): Promise<string[]> {
+      assertRoleAudited(db, tenantId, context, [...CATALOG_READ_ROLES])
       if (target.type === 'variant') {
         const [row] = await db
           .select({ sku: productVariants.sku })

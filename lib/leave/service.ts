@@ -1,6 +1,8 @@
 import { eq, and, gte, lte, sql } from 'drizzle-orm'
 import { leaveRequests, employees } from '@/db/schema'
 import type { Db } from '@/db/client'
+import { assertRoleAudited } from '../authz/service'
+import type { CallerContext } from '../authz/types'
 import type {
   LeaveService,
   AnnualLeaveBalance,
@@ -52,12 +54,16 @@ function toLeaveRequest(
   }
 }
 
+const LEAVE_ADMIN_ROLES = ['owner', 'accountant', 'branch_manager'] as const
+
 export function createLeaveService(db: Db): LeaveService {
   async function getAnnualLeaveBalance(
+    context: CallerContext,
     tenantId: string,
     employeeId: string,
     year: number
   ): Promise<AnnualLeaveBalance> {
+    assertRoleAudited(db, tenantId, context, [...LEAVE_ADMIN_ROLES])
     const [employee] = await db
       .select({ hireDate: employees.hireDate })
       .from(employees)
@@ -88,14 +94,15 @@ export function createLeaveService(db: Db): LeaveService {
   return {
     getAnnualLeaveBalance,
 
-    async createLeaveRequest(input: CreateLeaveRequestInput): Promise<LeaveRequest> {
+    async createLeaveRequest(context: CallerContext, input: CreateLeaveRequestInput): Promise<LeaveRequest> {
+      assertRoleAudited(db, input.tenantId, context, [...LEAVE_ADMIN_ROLES])
       const requestedDays = dayCount(input.startDate, input.endDate)
       const year = new Date(input.startDate).getUTCFullYear()
 
       let sickPayTier: SickPayTier | undefined
 
       if (input.leaveType === 'annual') {
-        const balance = await getAnnualLeaveBalance(input.tenantId, input.employeeId, year)
+        const balance = await getAnnualLeaveBalance(context, input.tenantId, input.employeeId, year)
         if (requestedDays > balance.remainingDays) {
           throw new Error(
             `annual leave request (${requestedDays} days) exceeds remaining balance (${balance.remainingDays} days) for ${year}`
@@ -141,7 +148,12 @@ export function createLeaveService(db: Db): LeaveService {
       return toLeaveRequest(row, sickPayTier)
     },
 
-    async approveLeaveRequest(tenantId: string, leaveRequestId: string): Promise<LeaveRequest> {
+    async approveLeaveRequest(
+      context: CallerContext,
+      tenantId: string,
+      leaveRequestId: string
+    ): Promise<LeaveRequest> {
+      assertRoleAudited(db, tenantId, context, [...LEAVE_ADMIN_ROLES])
       const [row] = await db
         .update(leaveRequests)
         .set({ status: 'approved' })
@@ -157,7 +169,12 @@ export function createLeaveService(db: Db): LeaveService {
       return toLeaveRequest(row)
     },
 
-    async rejectLeaveRequest(tenantId: string, leaveRequestId: string): Promise<LeaveRequest> {
+    async rejectLeaveRequest(
+      context: CallerContext,
+      tenantId: string,
+      leaveRequestId: string
+    ): Promise<LeaveRequest> {
+      assertRoleAudited(db, tenantId, context, [...LEAVE_ADMIN_ROLES])
       const [row] = await db
         .update(leaveRequests)
         .set({ status: 'rejected' })

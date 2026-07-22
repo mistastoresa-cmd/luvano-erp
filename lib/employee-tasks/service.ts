@@ -1,11 +1,16 @@
 import { eq, and, desc } from 'drizzle-orm'
 import { employeeTasks } from '@/db/schema'
 import type { Db } from '@/db/client'
+import { assertRoleAudited } from '../authz/service'
+import type { CallerContext } from '../authz/types'
 import type { TasksService, AssignTaskInput, EmployeeTask, TaskStatus } from './types'
+
+const TASK_MANAGEMENT_ROLES = ['owner', 'accountant', 'branch_manager'] as const
 
 export function createTasksService(db: Db): TasksService {
   return {
-    async assignTask(input: AssignTaskInput): Promise<EmployeeTask> {
+    async assignTask(context: CallerContext, input: AssignTaskInput): Promise<EmployeeTask> {
+      assertRoleAudited(db, input.tenantId, context, [...TASK_MANAGEMENT_ROLES])
       const [row] = await db
         .insert(employeeTasks)
         .values({
@@ -20,7 +25,12 @@ export function createTasksService(db: Db): TasksService {
       return row as EmployeeTask
     },
 
-    async listEmployeeTasks(tenantId: string, employeeId: string): Promise<EmployeeTask[]> {
+    async listEmployeeTasks(
+      context: CallerContext,
+      tenantId: string,
+      employeeId: string
+    ): Promise<EmployeeTask[]> {
+      assertRoleAudited(db, tenantId, context, [...TASK_MANAGEMENT_ROLES])
       const rows = await db
         .select()
         .from(employeeTasks)
@@ -29,7 +39,13 @@ export function createTasksService(db: Db): TasksService {
       return rows as EmployeeTask[]
     },
 
-    async updateTaskStatus(tenantId: string, taskId: string, status: TaskStatus): Promise<EmployeeTask> {
+    async updateTaskStatus(
+      context: CallerContext,
+      tenantId: string,
+      taskId: string,
+      status: TaskStatus
+    ): Promise<EmployeeTask> {
+      assertRoleAudited(db, tenantId, context, [...TASK_MANAGEMENT_ROLES])
       const [row] = await db
         .update(employeeTasks)
         .set({ status })

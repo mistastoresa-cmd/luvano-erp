@@ -1,7 +1,11 @@
 import { eq, and, desc } from 'drizzle-orm'
 import { employeeNotifications } from '@/db/schema'
 import type { Db } from '@/db/client'
+import { assertRoleAudited } from '../authz/service'
+import type { CallerContext } from '../authz/types'
 import type { NotificationsService, IssueNotificationInput, EmployeeNotification } from './types'
+
+const NOTIFICATION_ROLES = ['owner', 'accountant', 'branch_manager'] as const
 
 function toNotification(row: typeof employeeNotifications.$inferSelect): EmployeeNotification {
   return {
@@ -21,7 +25,11 @@ function toNotification(row: typeof employeeNotifications.$inferSelect): Employe
 
 export function createNotificationsService(db: Db): NotificationsService {
   return {
-    async issueNotification(input: IssueNotificationInput): Promise<EmployeeNotification> {
+    async issueNotification(
+      context: CallerContext,
+      input: IssueNotificationInput
+    ): Promise<EmployeeNotification> {
+      assertRoleAudited(db, input.tenantId, context, [...NOTIFICATION_ROLES])
       const [row] = await db
         .insert(employeeNotifications)
         .values({
@@ -37,7 +45,12 @@ export function createNotificationsService(db: Db): NotificationsService {
       return toNotification(row)
     },
 
-    async listEmployeeNotifications(tenantId: string, employeeId: string): Promise<EmployeeNotification[]> {
+    async listEmployeeNotifications(
+      context: CallerContext,
+      tenantId: string,
+      employeeId: string
+    ): Promise<EmployeeNotification[]> {
+      assertRoleAudited(db, tenantId, context, [...NOTIFICATION_ROLES])
       const rows = await db
         .select()
         .from(employeeNotifications)
@@ -48,7 +61,12 @@ export function createNotificationsService(db: Db): NotificationsService {
       return rows.map(toNotification)
     },
 
-    async acknowledgeNotification(tenantId: string, notificationId: string): Promise<EmployeeNotification> {
+    async acknowledgeNotification(
+      context: CallerContext,
+      tenantId: string,
+      notificationId: string
+    ): Promise<EmployeeNotification> {
+      assertRoleAudited(db, tenantId, context, [...NOTIFICATION_ROLES])
       const [row] = await db
         .update(employeeNotifications)
         .set({ status: 'acknowledged', acknowledgedAt: new Date() })

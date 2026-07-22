@@ -1,3 +1,5 @@
+import type { CallerContext } from '../authz/types'
+
 export type TerminationReason = 'resignation' | 'employer_termination' | 'contract_end' | 'other'
 
 export interface GratuityCalculation {
@@ -20,6 +22,9 @@ export interface TerminateEmployeeResult extends GratuityCalculation {
   journalEntryId: string | null
 }
 
+// Gratuity is confidential financial + termination data — owner/accountant
+// only, same restriction as lib/hr (payroll); excludes branch_manager
+// unlike the rest of the HR services (employees, leave, tasks).
 export interface GratuityService {
   // Pure calculation, no writes — art. 84 formula (half-month salary/year for
   // the first 5 years, full month/year beyond that) reduced per art. 85 when
@@ -28,6 +33,7 @@ export interface GratuityService {
   // termination, fixed-term contract ending, other) always gets the full
   // unreduced amount.
   previewEndOfServiceGratuity(
+    context: CallerContext,
     tenantId: string,
     employeeId: string,
     terminationDate: string,
@@ -40,5 +46,5 @@ export interface GratuityService {
   // helper postPayrollJournal uses. Throws if the employee is already
   // terminated — this is the idempotency guard (mirrors
   // processPayrollRun's "already processed" check), not a re-postable action.
-  terminateEmployee(input: TerminateEmployeeInput): Promise<TerminateEmployeeResult>
+  terminateEmployee(context: CallerContext, input: TerminateEmployeeInput): Promise<TerminateEmployeeResult>
 }

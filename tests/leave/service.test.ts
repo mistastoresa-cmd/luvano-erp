@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { createTestDb } from '../setup/db'
 import { seedTenantWithBranch } from '../setup/seed'
 import { createEmployeesService } from '@/lib/employees/service'
+import { SYSTEM_CONTEXT } from '@/lib/authz/types'
 import { createLeaveService } from '@/lib/leave/service'
 
 async function seedEmployee(
@@ -10,7 +11,7 @@ async function seedEmployee(
   hireDate: string
 ) {
   const employees = createEmployeesService(db)
-  return employees.createEmployee({ tenantId, name: 'Test Employee', hireDate, baseSalary: 5000 })
+  return employees.createEmployee(SYSTEM_CONTEXT, { tenantId, name: 'Test Employee', hireDate, baseSalary: 5000 })
 }
 
 describe('LeaveService.getAnnualLeaveBalance', () => {
@@ -20,7 +21,7 @@ describe('LeaveService.getAnnualLeaveBalance', () => {
     const employee = await seedEmployee(db, tenant.id, '2023-01-01')
     const leave = createLeaveService(db)
 
-    const balance = await leave.getAnnualLeaveBalance(tenant.id, employee.id, 2026)
+    const balance = await leave.getAnnualLeaveBalance(SYSTEM_CONTEXT, tenant.id, employee.id, 2026)
     expect(balance.entitlementDays).toBe(21)
   })
 
@@ -30,7 +31,7 @@ describe('LeaveService.getAnnualLeaveBalance', () => {
     const employee = await seedEmployee(db, tenant.id, '2018-01-01')
     const leave = createLeaveService(db)
 
-    const balance = await leave.getAnnualLeaveBalance(tenant.id, employee.id, 2026)
+    const balance = await leave.getAnnualLeaveBalance(SYSTEM_CONTEXT, tenant.id, employee.id, 2026)
     expect(balance.entitlementDays).toBe(30)
   })
 
@@ -40,16 +41,16 @@ describe('LeaveService.getAnnualLeaveBalance', () => {
     const employee = await seedEmployee(db, tenant.id, '2023-01-01')
     const leave = createLeaveService(db)
 
-    const approved = await leave.createLeaveRequest({
+    const approved = await leave.createLeaveRequest(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       employeeId: employee.id,
       leaveType: 'annual',
       startDate: '2026-03-01',
       endDate: '2026-03-05', // 5 days
     })
-    await leave.approveLeaveRequest(tenant.id, approved.id)
+    await leave.approveLeaveRequest(SYSTEM_CONTEXT, tenant.id, approved.id)
 
-    const pending = await leave.createLeaveRequest({
+    const pending = await leave.createLeaveRequest(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       employeeId: employee.id,
       leaveType: 'annual',
@@ -58,7 +59,7 @@ describe('LeaveService.getAnnualLeaveBalance', () => {
     })
     void pending // left pending — must not count against the balance
 
-    const balance = await leave.getAnnualLeaveBalance(tenant.id, employee.id, 2026)
+    const balance = await leave.getAnnualLeaveBalance(SYSTEM_CONTEXT, tenant.id, employee.id, 2026)
     expect(balance.usedDays).toBe(5)
     expect(balance.remainingDays).toBe(16)
   })
@@ -72,7 +73,7 @@ describe('LeaveService.createLeaveRequest', () => {
     const leave = createLeaveService(db)
 
     await expect(
-      leave.createLeaveRequest({
+      leave.createLeaveRequest(SYSTEM_CONTEXT, {
         tenantId: tenant.id,
         employeeId: employee.id,
         leaveType: 'annual',
@@ -89,7 +90,7 @@ describe('LeaveService.createLeaveRequest', () => {
     const leave = createLeaveService(db)
 
     // First 25 days: still under the 30-day full-pay threshold.
-    const first = await leave.createLeaveRequest({
+    const first = await leave.createLeaveRequest(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       employeeId: employee.id,
       leaveType: 'sick',
@@ -97,10 +98,10 @@ describe('LeaveService.createLeaveRequest', () => {
       endDate: '2026-01-25', // 25 days
     })
     expect(first.sickPayTier).toBe('full')
-    await leave.approveLeaveRequest(tenant.id, first.id)
+    await leave.approveLeaveRequest(SYSTEM_CONTEXT, tenant.id, first.id)
 
     // Next request starts after 25 prior approved days — still under 30.
-    const second = await leave.createLeaveRequest({
+    const second = await leave.createLeaveRequest(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       employeeId: employee.id,
       leaveType: 'sick',
@@ -108,10 +109,10 @@ describe('LeaveService.createLeaveRequest', () => {
       endDate: '2026-02-10', // 10 days, prior=25 -> still 'full' tier at start
     })
     expect(second.sickPayTier).toBe('full')
-    await leave.approveLeaveRequest(tenant.id, second.id)
+    await leave.approveLeaveRequest(SYSTEM_CONTEXT, tenant.id, second.id)
 
     // Now prior approved = 35 days (>30) -> three_quarters tier.
-    const third = await leave.createLeaveRequest({
+    const third = await leave.createLeaveRequest(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       employeeId: employee.id,
       leaveType: 'sick',
@@ -127,7 +128,7 @@ describe('LeaveService.createLeaveRequest', () => {
     const employee = await seedEmployee(db, tenant.id, '2023-01-01')
     const leave = createLeaveService(db)
 
-    const request = await leave.createLeaveRequest({
+    const request = await leave.createLeaveRequest(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       employeeId: employee.id,
       leaveType: 'unpaid',
@@ -145,16 +146,16 @@ describe('LeaveService.approveLeaveRequest / rejectLeaveRequest', () => {
     const employee = await seedEmployee(db, tenant.id, '2023-01-01')
     const leave = createLeaveService(db)
 
-    const request = await leave.createLeaveRequest({
+    const request = await leave.createLeaveRequest(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       employeeId: employee.id,
       leaveType: 'annual',
       startDate: '2026-01-01',
       endDate: '2026-01-02',
     })
-    await leave.approveLeaveRequest(tenant.id, request.id)
+    await leave.approveLeaveRequest(SYSTEM_CONTEXT, tenant.id, request.id)
 
-    await expect(leave.approveLeaveRequest(tenant.id, request.id)).rejects.toThrow('not found or not pending')
+    await expect(leave.approveLeaveRequest(SYSTEM_CONTEXT, tenant.id, request.id)).rejects.toThrow('not found or not pending')
   })
 
   it('rejectLeaveRequest flips status to rejected', async () => {
@@ -163,14 +164,34 @@ describe('LeaveService.approveLeaveRequest / rejectLeaveRequest', () => {
     const employee = await seedEmployee(db, tenant.id, '2023-01-01')
     const leave = createLeaveService(db)
 
-    const request = await leave.createLeaveRequest({
+    const request = await leave.createLeaveRequest(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       employeeId: employee.id,
       leaveType: 'annual',
       startDate: '2026-01-01',
       endDate: '2026-01-02',
     })
-    const rejected = await leave.rejectLeaveRequest(tenant.id, request.id)
+    const rejected = await leave.rejectLeaveRequest(SYSTEM_CONTEXT, tenant.id, request.id)
     expect(rejected.status).toBe('rejected')
+  })
+})
+
+describe('LeaveService — RBAC', () => {
+  it('rejects staff creating a leave request (HR administration is owner/accountant/branch_manager only)', async () => {
+    const db = await createTestDb()
+    const { tenant } = await seedTenantWithBranch(db)
+    const employee = await seedEmployee(db, tenant.id, '2023-01-01')
+    const leave = createLeaveService(db)
+    const staff = { userId: 'user-1', role: 'staff' as const, branchAccess: { type: 'all' as const } }
+
+    await expect(
+      leave.createLeaveRequest(staff, {
+        tenantId: tenant.id,
+        employeeId: employee.id,
+        leaveType: 'annual',
+        startDate: '2026-01-01',
+        endDate: '2026-01-02',
+      })
+    ).rejects.toThrow('role "staff"')
   })
 })

@@ -1,6 +1,8 @@
 import { eq, and, desc } from 'drizzle-orm'
 import { customers, customerInteractions } from '@/db/schema'
 import type { Db } from '@/db/client'
+import { assertRoleAudited } from '../authz/service'
+import type { CallerContext } from '../authz/types'
 import type {
   CustomersService,
   CreateCustomerInput,
@@ -10,9 +12,12 @@ import type {
   CustomerInteraction,
 } from './types'
 
+const CRM_ROLES = ['owner', 'accountant', 'branch_manager', 'staff'] as const
+
 export function createCustomersService(db: Db): CustomersService {
   return {
-    async createCustomer(input: CreateCustomerInput): Promise<Customer> {
+    async createCustomer(context: CallerContext, input: CreateCustomerInput): Promise<Customer> {
+      assertRoleAudited(db, input.tenantId, context, [...CRM_ROLES])
       const [customer] = await db
         .insert(customers)
         .values({
@@ -28,10 +33,12 @@ export function createCustomersService(db: Db): CustomersService {
     },
 
     async updateCustomer(
+      context: CallerContext,
       tenantId: string,
       customerId: string,
       input: UpdateCustomerInput
     ): Promise<Customer> {
+      assertRoleAudited(db, tenantId, context, [...CRM_ROLES])
       const [customer] = await db
         .update(customers)
         .set(input)
@@ -41,7 +48,8 @@ export function createCustomersService(db: Db): CustomersService {
       return customer
     },
 
-    async getCustomer(tenantId: string, customerId: string): Promise<Customer | null> {
+    async getCustomer(context: CallerContext, tenantId: string, customerId: string): Promise<Customer | null> {
+      assertRoleAudited(db, tenantId, context, [...CRM_ROLES])
       const [customer] = await db
         .select()
         .from(customers)
@@ -50,11 +58,13 @@ export function createCustomersService(db: Db): CustomersService {
       return customer ?? null
     },
 
-    async listCustomers(tenantId: string): Promise<Customer[]> {
+    async listCustomers(context: CallerContext, tenantId: string): Promise<Customer[]> {
+      assertRoleAudited(db, tenantId, context, [...CRM_ROLES])
       return db.select().from(customers).where(eq(customers.tenantId, tenantId))
     },
 
-    async logInteraction(input: LogInteractionInput): Promise<CustomerInteraction> {
+    async logInteraction(context: CallerContext, input: LogInteractionInput): Promise<CustomerInteraction> {
+      assertRoleAudited(db, input.tenantId, context, [...CRM_ROLES])
       const [interaction] = await db
         .insert(customerInteractions)
         .values({
@@ -68,7 +78,12 @@ export function createCustomersService(db: Db): CustomersService {
       return interaction
     },
 
-    async listInteractions(tenantId: string, customerId: string): Promise<CustomerInteraction[]> {
+    async listInteractions(
+      context: CallerContext,
+      tenantId: string,
+      customerId: string
+    ): Promise<CustomerInteraction[]> {
+      assertRoleAudited(db, tenantId, context, [...CRM_ROLES])
       return db
         .select()
         .from(customerInteractions)

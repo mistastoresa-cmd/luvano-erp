@@ -1,3 +1,5 @@
+import type { CallerContext } from '../authz/types'
+
 export type IdType = 'national_id' | 'iqama'
 export type ContractType = 'unlimited' | 'fixed_term'
 export type EmployeeStatus = 'active' | 'on_leave' | 'terminated'
@@ -71,13 +73,23 @@ export interface Employee {
   createdAt: Date
 }
 
+// Employee registration/PII — owner/accountant/branch_manager, staff
+// excluded (personal + salary-adjacent data is not routine staff visibility,
+// unlike lib/customers). createEmployee/updateEmployee additionally check
+// branch access when a branchId is set, so a branch_manager can't register
+// or edit an employee outside their own branch.
 export interface EmployeesService {
   // Allocates the next sequential employee_number for the tenant atomically
   // (employee_number_counters, same "atomic relative update" family as
   // applyInventoryDelta/redeemCoupon) and creates the employee row with it —
   // the caller never supplies employeeNumber.
-  createEmployee(input: CreateEmployeeInput): Promise<Employee>
-  updateEmployee(tenantId: string, employeeId: string, input: UpdateEmployeeInput): Promise<Employee>
-  getEmployee(tenantId: string, employeeId: string): Promise<Employee | null>
-  listEmployees(tenantId: string): Promise<Employee[]>
+  createEmployee(context: CallerContext, input: CreateEmployeeInput): Promise<Employee>
+  updateEmployee(
+    context: CallerContext,
+    tenantId: string,
+    employeeId: string,
+    input: UpdateEmployeeInput
+  ): Promise<Employee>
+  getEmployee(context: CallerContext, tenantId: string, employeeId: string): Promise<Employee | null>
+  listEmployees(context: CallerContext, tenantId: string): Promise<Employee[]>
 }

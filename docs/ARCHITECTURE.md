@@ -377,6 +377,81 @@ itself has no dedicated test file — covered indirectly by every RBAC test
 above that exercises a real denial write). tsc/vitest/next build clean —
 132 tests across 23 files total.
 
+## RBAC extension — every remaining service wired (post-T7)
+
+Founder-directed follow-up immediately after T7/T8: extend the same
+`CallerContext`-first-parameter pattern to every service built since the
+original RBAC plan was locked — `lib/products`, `lib/marketing`,
+`lib/customers`, `lib/hr` (payroll), `lib/employees`, `lib/leave`,
+`lib/gratuity`, `lib/employee-tasks`, `lib/hr-notifications`. Same
+mechanics as T7 (assertRoleAudited/assertBranchAccessAudited, ~90
+pre-existing test call sites updated to pass `SYSTEM_CONTEXT`, one new
+RBAC-specific test per service), new role decisions per service:
+
+- **`lib/products`** — `createProduct`/`addVariant` (catalog decisions):
+  owner/accountant/branch_manager. `resolveSkusForTarget` (read-only SKU
+  lookup): all 4 roles, since `lib/marketing` calls it internally on
+  behalf of whatever caller — including POS staff — is validating a
+  coupon; `resolveEligibleLines` now threads the caller's own `context`
+  through to that call rather than using a fixed identity.
+- **`lib/marketing`** — `activateCoupon`/`deactivateCoupon` (promotion
+  management): owner/accountant/branch_manager. `validateCoupon`/
+  `redeemCoupon` (checkout-time actions): all 4 roles, so a cashier can
+  apply a coupon at POS.
+- **`lib/customers`** — all methods: all 4 roles. Routine CRM data entry
+  (registering a walk-in customer, logging a call) — the one HR-adjacent
+  service *not* restricted, since customer PII isn't treated as sensitive
+  as employee salary/personal data in this system.
+- **`lib/hr` (payroll)** — all 3 methods: owner/accountant only. Payroll
+  is confidential financial + HR data — stricter than the rest of HR
+  (employees/leave/tasks allow branch_manager), same restriction as
+  `lib/gratuity`.
+- **`lib/employees`** — `createEmployee`/`updateEmployee`/`getEmployee`/
+  `listEmployees`: owner/accountant/branch_manager, staff excluded (PII +
+  salary data isn't routine staff visibility, unlike `lib/customers`).
+  `createEmployee`/`updateEmployee` additionally check branch access when
+  a `branchId` is set or being changed — a branch_manager can't register
+  or edit an employee outside their own branch. `listEmployees` is
+  role-gated only, not per-row branch-filtered (a branch_manager sees the
+  whole tenant roster, not just their branch) — a documented, deliberate
+  simplification rather than building partial-branch-filtering logic for
+  a read that's still restricted to internal HR-admin roles either way.
+- **`lib/leave`** — all 4 methods: owner/accountant/branch_manager. Real
+  self-service (an employee requesting their own leave) is deferred along
+  with employee login — this is currently an HR-admin action taken on the
+  employee's behalf, not an employee-facing flow yet.
+- **`lib/gratuity`** — both methods: owner/accountant only, excluding
+  branch_manager unlike the rest of HR — termination + gratuity is the
+  most sensitive HR action in the system and also posts GL entries.
+- **`lib/employee-tasks`** — all 3 methods: owner/accountant/branch_manager.
+  Same self-service caveat as `lib/leave`: an employee marking their own
+  task done is deferred, this is an HR-admin view for now.
+- **`lib/hr-notifications`** — all 3 methods: owner/accountant/
+  branch_manager. `acknowledgeNotification` is conceptually the
+  employee's own action (confirming receipt of a warning letter) but is
+  recorded by an HR-admin role on the employee's behalf until self-service
+  login exists.
+
+**Every deferred-self-service note above is the same underlying gap,
+named once here rather than nine times**: `employees.userId` links to
+Better Auth's `user.id` but nothing creates the login, and no `'employee'`
+RBAC role exists yet. Until that's built, every "the employee does X to
+their own record" action in this system is performed by an HR-admin role
+instead — not a bug, a scoped-out feature (see the HR expansion section
+above for the original decision to defer this).
+
+A real flake surfaced again while verifying this: at 23 test files,
+`maxForks: 2` (set during T7) started dropping 2 files to "Worker exited
+unexpectedly" even though it had been clean before. Set `maxForks: 1`
+(fully serial) — confirmed clean end-to-end (144/144) at that setting;
+trading wall-clock time for determinism was judged the right call over
+continuing to chase a parallelism ceiling that keeps moving as the suite
+grows.
+
+144 tests across 23 files (was 132 before this pass — ~12 new RBAC tests
+across the 9 services, some services sharing one denial + one allow case).
+tsc/vitest/next build clean.
+
 ## Product variants (Phase 1.5, module 1 of 6 — implemented)
 
 Founder-directed: some categories (clothing, shoes) need a product to have

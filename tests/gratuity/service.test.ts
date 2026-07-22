@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm'
 import { createTestDb } from '../setup/db'
 import { seedTenantWithBranch } from '../setup/seed'
 import { createEmployeesService } from '@/lib/employees/service'
+import { SYSTEM_CONTEXT } from '@/lib/authz/types'
 import { createGratuityService } from '@/lib/gratuity/service'
 import { chartOfAccounts, accountMappings, journalEntryLines } from '@/db/schema'
 import type { AccountMappingKey } from '@/lib/accounting/types'
@@ -28,7 +29,7 @@ async function seedEmployee(
   baseSalary = 6000
 ) {
   const employees = createEmployeesService(db)
-  return employees.createEmployee({ tenantId, name: 'Test Employee', hireDate, baseSalary })
+  return employees.createEmployee(SYSTEM_CONTEXT, { tenantId, name: 'Test Employee', hireDate, baseSalary })
 }
 
 describe('GratuityService.previewEndOfServiceGratuity', () => {
@@ -39,6 +40,7 @@ describe('GratuityService.previewEndOfServiceGratuity', () => {
     const gratuity = createGratuityService(db)
 
     const result = await gratuity.previewEndOfServiceGratuity(
+      SYSTEM_CONTEXT,
       tenant.id,
       employee.id,
       '2026-01-01',
@@ -58,7 +60,9 @@ describe('GratuityService.previewEndOfServiceGratuity', () => {
     const employee = await seedEmployee(db, tenant.id, '2025-01-01', 6000) // ~1 year
     const gratuity = createGratuityService(db)
 
-    const result = await gratuity.previewEndOfServiceGratuity(tenant.id, employee.id, '2026-01-01', 'resignation')
+    const result = await gratuity.previewEndOfServiceGratuity(
+      SYSTEM_CONTEXT,
+      tenant.id, employee.id, '2026-01-01', 'resignation')
     expect(result.applicablePercent).toBe(0)
     expect(result.netAmount).toBe(0)
   })
@@ -69,7 +73,9 @@ describe('GratuityService.previewEndOfServiceGratuity', () => {
     const employee = await seedEmployee(db, tenant.id, '2023-01-01', 6000) // ~3 years
     const gratuity = createGratuityService(db)
 
-    const result = await gratuity.previewEndOfServiceGratuity(tenant.id, employee.id, '2026-01-01', 'resignation')
+    const result = await gratuity.previewEndOfServiceGratuity(
+      SYSTEM_CONTEXT,
+      tenant.id, employee.id, '2026-01-01', 'resignation')
     expect(result.applicablePercent).toBeCloseTo(33.33, 1)
   })
 
@@ -79,7 +85,9 @@ describe('GratuityService.previewEndOfServiceGratuity', () => {
     const employee = await seedEmployee(db, tenant.id, '2019-01-01', 6000) // ~7 years
     const gratuity = createGratuityService(db)
 
-    const result = await gratuity.previewEndOfServiceGratuity(tenant.id, employee.id, '2026-01-01', 'resignation')
+    const result = await gratuity.previewEndOfServiceGratuity(
+      SYSTEM_CONTEXT,
+      tenant.id, employee.id, '2026-01-01', 'resignation')
     expect(result.applicablePercent).toBeCloseTo(66.67, 1)
   })
 })
@@ -93,7 +101,7 @@ describe('GratuityService.terminateEmployee', () => {
     const employees = createEmployeesService(db)
     const gratuity = createGratuityService(db)
 
-    const result = await gratuity.terminateEmployee({
+    const result = await gratuity.terminateEmployee(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       employeeId: employee.id,
       terminationDate: '2026-01-01',
@@ -102,7 +110,7 @@ describe('GratuityService.terminateEmployee', () => {
 
     expect(result.journalEntryId).toBeTruthy()
 
-    const updated = await employees.getEmployee(tenant.id, employee.id)
+    const updated = await employees.getEmployee(SYSTEM_CONTEXT, tenant.id, employee.id)
     expect(updated?.status).toBe('terminated')
     expect(updated?.terminationReason).toBe('employer_termination')
 
@@ -122,7 +130,7 @@ describe('GratuityService.terminateEmployee', () => {
     const employee = await seedEmployee(db, tenant.id, '2016-01-01', 6000)
     const gratuity = createGratuityService(db)
 
-    await gratuity.terminateEmployee({
+    await gratuity.terminateEmployee(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       employeeId: employee.id,
       terminationDate: '2026-01-01',
@@ -130,7 +138,7 @@ describe('GratuityService.terminateEmployee', () => {
     })
 
     await expect(
-      gratuity.terminateEmployee({
+      gratuity.terminateEmployee(SYSTEM_CONTEXT, {
         tenantId: tenant.id,
         employeeId: employee.id,
         terminationDate: '2026-02-01',
@@ -147,7 +155,7 @@ describe('GratuityService.terminateEmployee', () => {
     const employees = createEmployeesService(db)
     const gratuity = createGratuityService(db)
 
-    const result = await gratuity.terminateEmployee({
+    const result = await gratuity.terminateEmployee(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       employeeId: employee.id,
       terminationDate: '2026-01-01',
@@ -157,7 +165,27 @@ describe('GratuityService.terminateEmployee', () => {
     expect(result.netAmount).toBe(0)
     expect(result.journalEntryId).toBeNull()
 
-    const updated = await employees.getEmployee(tenant.id, employee.id)
+    const updated = await employees.getEmployee(SYSTEM_CONTEXT, tenant.id, employee.id)
     expect(updated?.status).toBe('terminated')
+  })
+})
+
+describe('GratuityService — RBAC', () => {
+  it('rejects a branch_manager terminating an employee (gratuity is owner/accountant-only confidential data)', async () => {
+    const db = await createTestDb()
+    const { tenant } = await seedTenantWithBranch(db)
+    await seedGratuityAccountMappings(db, tenant.id)
+    const employee = await seedEmployee(db, tenant.id, '2016-01-01', 6000)
+    const gratuity = createGratuityService(db)
+    const branchManager = { userId: 'user-1', role: 'branch_manager' as const, branchAccess: { type: 'all' as const } }
+
+    await expect(
+      gratuity.terminateEmployee(branchManager, {
+        tenantId: tenant.id,
+        employeeId: employee.id,
+        terminationDate: '2026-01-01',
+        terminationReason: 'employer_termination',
+      })
+    ).rejects.toThrow('role "branch_manager"')
   })
 })

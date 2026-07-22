@@ -1,3 +1,5 @@
+import type { CallerContext } from '../authz/types'
+
 export interface CreateCustomerInput {
   tenantId: string
   name: string
@@ -45,11 +47,24 @@ export interface CustomerInteraction {
   createdAt: Date
 }
 
+// CRM data entry — routine, open to all 4 roles (any staff can register a
+// walk-in customer or log a call), unlike the financial/HR services where
+// staff is excluded (RBAC extension beyond the original T7 scope — see
+// docs/ARCHITECTURE.md).
 export interface CustomersService {
-  createCustomer(input: CreateCustomerInput): Promise<Customer>
-  updateCustomer(tenantId: string, customerId: string, input: UpdateCustomerInput): Promise<Customer>
-  getCustomer(tenantId: string, customerId: string): Promise<Customer | null>
-  listCustomers(tenantId: string): Promise<Customer[]>
-  logInteraction(input: LogInteractionInput): Promise<CustomerInteraction>
-  listInteractions(tenantId: string, customerId: string): Promise<CustomerInteraction[]>
+  createCustomer(context: CallerContext, input: CreateCustomerInput): Promise<Customer>
+  updateCustomer(
+    context: CallerContext,
+    tenantId: string,
+    customerId: string,
+    input: UpdateCustomerInput
+  ): Promise<Customer>
+  getCustomer(context: CallerContext, tenantId: string, customerId: string): Promise<Customer | null>
+  listCustomers(context: CallerContext, tenantId: string): Promise<Customer[]>
+  logInteraction(context: CallerContext, input: LogInteractionInput): Promise<CustomerInteraction>
+  listInteractions(
+    context: CallerContext,
+    tenantId: string,
+    customerId: string
+  ): Promise<CustomerInteraction[]>
 }

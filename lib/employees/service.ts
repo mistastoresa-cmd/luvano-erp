@@ -1,12 +1,16 @@
 import { eq, and, sql } from 'drizzle-orm'
 import { employees, employeeNumberCounters } from '@/db/schema'
 import type { Db, Tx } from '@/db/client'
+import { assertRoleAudited, assertBranchAccessAudited } from '../authz/service'
+import type { CallerContext } from '../authz/types'
 import type {
   EmployeesService,
   CreateEmployeeInput,
   UpdateEmployeeInput,
   Employee,
 } from './types'
+
+const HR_ROLES = ['owner', 'accountant', 'branch_manager'] as const
 
 function toEmployee(row: typeof employees.$inferSelect): Employee {
   return {
@@ -61,7 +65,9 @@ async function allocateEmployeeNumber(tx: Tx, tenantId: string): Promise<string>
 
 export function createEmployeesService(db: Db): EmployeesService {
   return {
-    async createEmployee(input: CreateEmployeeInput): Promise<Employee> {
+    async createEmployee(context: CallerContext, input: CreateEmployeeInput): Promise<Employee> {
+      assertRoleAudited(db, input.tenantId, context, [...HR_ROLES])
+      if (input.branchId) assertBranchAccessAudited(db, input.tenantId, context, input.branchId)
       return db.transaction(async (tx) => {
         const employeeNumber = await allocateEmployeeNumber(tx, input.tenantId)
 
@@ -95,10 +101,20 @@ export function createEmployeesService(db: Db): EmployeesService {
     },
 
     async updateEmployee(
+      context: CallerContext,
       tenantId: string,
       employeeId: string,
       input: UpdateEmployeeInput
     ): Promise<Employee> {
+      assertRoleAudited(db, tenantId, context, [...HR_ROLES])
+      const [existing] = await db
+        .select({ branchId: employees.branchId })
+        .from(employees)
+        .where(and(eq(employees.tenantId, tenantId), eq(employees.id, employeeId)))
+        .limit(1)
+      if (existing?.branchId) assertBranchAccessAudited(db, tenantId, context, existing.branchId)
+      if (input.branchId) assertBranchAccessAudited(db, tenantId, context, input.branchId)
+
       const [row] = await db
         .update(employees)
         .set({
@@ -111,7 +127,8 @@ export function createEmployeesService(db: Db): EmployeesService {
       return toEmployee(row)
     },
 
-    async getEmployee(tenantId: string, employeeId: string): Promise<Employee | null> {
+    async getEmployee(context: CallerContext, tenantId: string, employeeId: string): Promise<Employee | null> {
+      assertRoleAudited(db, tenantId, context, [...HR_ROLES])
       const [row] = await db
         .select()
         .from(employees)
@@ -120,7 +137,8 @@ export function createEmployeesService(db: Db): EmployeesService {
       return row ? toEmployee(row) : null
     },
 
-    async listEmployees(tenantId: string): Promise<Employee[]> {
+    async listEmployees(context: CallerContext, tenantId: string): Promise<Employee[]> {
+      assertRoleAudited(db, tenantId, context, [...HR_ROLES])
       const rows = await db.select().from(employees).where(eq(employees.tenantId, tenantId))
       return rows.map(toEmployee)
     },

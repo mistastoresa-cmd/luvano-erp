@@ -14,13 +14,14 @@ export default defineConfig({
     pool: 'forks',
     // As the suite grew past ~17 pglite-backed files, even one-process-per-file
     // isolation started hitting occasional "Worker exited unexpectedly" crashes
-    // under full parallelism (too many concurrent WASM instances competing for
-    // memory). Capping concurrent forks trades a bit of wall-clock time for
-    // reliability.
+    // under partial parallelism (maxForks: 4, then 2 — both still flaked as the
+    // suite kept growing, 2 files crashed even at maxForks: 2 with 23 files).
+    // Forcing fully serial execution (maxForks: 1) trades wall-clock time for
+    // determinism — reliability matters more than speed for a suite this size.
     poolOptions: {
       forks: {
         minForks: 1,
-        maxForks: 2,
+        maxForks: 1,
       },
     },
   },

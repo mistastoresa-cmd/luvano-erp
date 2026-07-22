@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { createTestDb } from '../setup/db'
 import { seedTenantWithBranch } from '../setup/seed'
 import { createProductsService } from '@/lib/products/service'
+import { SYSTEM_CONTEXT } from '@/lib/authz/types'
 
 describe('ProductsService.createProduct', () => {
   it('creates a simple (non-variant) product with exactly one variant', async () => {
@@ -9,7 +10,7 @@ describe('ProductsService.createProduct', () => {
     const { tenant } = await seedTenantWithBranch(db)
     const products = createProductsService(db)
 
-    const result = await products.createProduct({
+    const result = await products.createProduct(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       name: 'Oud 100ml',
       variants: [{ sku: 'OUD-100ML' }],
@@ -23,7 +24,7 @@ describe('ProductsService.createProduct', () => {
     const { tenant } = await seedTenantWithBranch(db)
     const products = createProductsService(db)
 
-    const result = await products.createProduct({
+    const result = await products.createProduct(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       name: 'Classic Shirt',
       category: 'clothing',
@@ -43,7 +44,7 @@ describe('ProductsService.createProduct', () => {
     const products = createProductsService(db)
 
     await expect(
-      products.createProduct({ tenantId: tenant.id, name: 'Empty Product', variants: [] })
+      products.createProduct(SYSTEM_CONTEXT, { tenantId: tenant.id, name: 'Empty Product', variants: [] })
     ).rejects.toThrow(/at least one variant/)
   })
 
@@ -52,10 +53,10 @@ describe('ProductsService.createProduct', () => {
     const { tenant } = await seedTenantWithBranch(db)
     const products = createProductsService(db)
 
-    await products.createProduct({ tenantId: tenant.id, name: 'Product A', variants: [{ sku: 'DUP-SKU' }] })
+    await products.createProduct(SYSTEM_CONTEXT, { tenantId: tenant.id, name: 'Product A', variants: [{ sku: 'DUP-SKU' }] })
 
     await expect(
-      products.createProduct({ tenantId: tenant.id, name: 'Product B', variants: [{ sku: 'DUP-SKU' }] })
+      products.createProduct(SYSTEM_CONTEXT, { tenantId: tenant.id, name: 'Product B', variants: [{ sku: 'DUP-SKU' }] })
     ).rejects.toThrow()
   })
 })
@@ -66,19 +67,19 @@ describe('ProductsService.addVariant', () => {
     const { tenant } = await seedTenantWithBranch(db)
     const products = createProductsService(db)
 
-    const { productId } = await products.createProduct({
+    const { productId } = await products.createProduct(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       name: 'Sneakers',
       variants: [{ sku: 'SNEAK-BLK-42', attributes: { color: 'black', size: '42' } }],
     })
 
-    const variantId = await products.addVariant(tenant.id, productId, {
+    const variantId = await products.addVariant(SYSTEM_CONTEXT, tenant.id, productId, {
       sku: 'SNEAK-BLK-43',
       attributes: { color: 'black', size: '43' },
     })
 
     expect(variantId).toBeTruthy()
-    const skus = await products.resolveSkusForTarget(tenant.id, { type: 'product', productId })
+    const skus = await products.resolveSkusForTarget(SYSTEM_CONTEXT, tenant.id, { type: 'product', productId })
     expect(skus).toEqual(expect.arrayContaining(['SNEAK-BLK-42', 'SNEAK-BLK-43']))
   })
 })
@@ -89,7 +90,7 @@ describe('ProductsService.resolveSkusForTarget', () => {
     const { tenant } = await seedTenantWithBranch(db)
     const products = createProductsService(db)
 
-    const { productId } = await products.createProduct({
+    const { productId } = await products.createProduct(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       name: 'Classic Shirt',
       variants: [
@@ -98,7 +99,7 @@ describe('ProductsService.resolveSkusForTarget', () => {
       ],
     })
 
-    const skus = await products.resolveSkusForTarget(tenant.id, { type: 'product', productId })
+    const skus = await products.resolveSkusForTarget(SYSTEM_CONTEXT, tenant.id, { type: 'product', productId })
     expect(skus.sort()).toEqual(['SHIRT-BLK-40', 'SHIRT-BLK-42'])
   })
 
@@ -107,7 +108,7 @@ describe('ProductsService.resolveSkusForTarget', () => {
     const { tenant } = await seedTenantWithBranch(db)
     const products = createProductsService(db)
 
-    const { variantIds } = await products.createProduct({
+    const { variantIds } = await products.createProduct(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       name: 'Classic Shirt',
       variants: [
@@ -116,7 +117,7 @@ describe('ProductsService.resolveSkusForTarget', () => {
       ],
     })
 
-    const skus = await products.resolveSkusForTarget(tenant.id, {
+    const skus = await products.resolveSkusForTarget(SYSTEM_CONTEXT, tenant.id, {
       type: 'variant',
       variantId: variantIds[0],
     })
@@ -128,10 +129,38 @@ describe('ProductsService.resolveSkusForTarget', () => {
     const { tenant } = await seedTenantWithBranch(db)
     const products = createProductsService(db)
 
-    const skus = await products.resolveSkusForTarget(tenant.id, {
+    const skus = await products.resolveSkusForTarget(SYSTEM_CONTEXT, tenant.id, {
       type: 'variant',
       variantId: '00000000-0000-0000-0000-000000000000',
     })
     expect(skus).toEqual([])
+  })
+})
+
+describe('ProductsService — RBAC', () => {
+  it('rejects staff creating a product (catalog management is a decision, not routine staff work)', async () => {
+    const db = await createTestDb()
+    const { tenant } = await seedTenantWithBranch(db)
+    const products = createProductsService(db)
+    const staff = { userId: 'user-1', role: 'staff' as const, branchAccess: { type: 'all' as const } }
+
+    await expect(
+      products.createProduct(staff, { tenantId: tenant.id, name: 'Staff Product', variants: [{ sku: 'SKU-X' }] })
+    ).rejects.toThrow('role "staff"')
+  })
+
+  it('allows staff to resolve SKUs (read-only, used by marketing at checkout)', async () => {
+    const db = await createTestDb()
+    const { tenant } = await seedTenantWithBranch(db)
+    const products = createProductsService(db)
+    const staff = { userId: 'user-1', role: 'staff' as const, branchAccess: { type: 'all' as const } }
+
+    const { productId } = await products.createProduct(SYSTEM_CONTEXT, {
+      tenantId: tenant.id,
+      name: 'Product A',
+      variants: [{ sku: 'SKU-Y' }],
+    })
+    const skus = await products.resolveSkusForTarget(staff, tenant.id, { type: 'product', productId })
+    expect(skus).toEqual(['SKU-Y'])
   })
 })

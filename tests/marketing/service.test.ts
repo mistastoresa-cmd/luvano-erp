@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { createTestDb } from '../setup/db'
 import { seedTenantWithBranch } from '../setup/seed'
 import { createMarketingService } from '@/lib/marketing/service'
+import { SYSTEM_CONTEXT } from '@/lib/authz/types'
 import { createProductsService } from '@/lib/products/service'
 import { coupons } from '@/db/schema'
 
@@ -18,7 +19,7 @@ describe('MarketingService — untargeted coupons (whole cart)', () => {
       discountValue: '10',
     })
 
-    const result = await marketing.validateCoupon(tenant.id, 'SUMMER10', [
+    const result = await marketing.validateCoupon(SYSTEM_CONTEXT, tenant.id, 'SUMMER10', [
       { sku: 'SKU-1', quantity: 2, unitPrice: 50 },
       { sku: 'SKU-2', quantity: 1, unitPrice: 100 },
     ])
@@ -33,7 +34,7 @@ describe('MarketingService — untargeted coupons (whole cart)', () => {
     const { tenant } = await seedTenantWithBranch(db)
     const marketing = createMarketingService(db)
 
-    const result = await marketing.validateCoupon(tenant.id, 'NOPE', [])
+    const result = await marketing.validateCoupon(SYSTEM_CONTEXT, tenant.id, 'NOPE', [])
     expect(result.valid).toBe(false)
     expect(result.reason).toBe('not_found')
   })
@@ -51,7 +52,7 @@ describe('MarketingService — untargeted coupons (whole cart)', () => {
       isActive: false,
     })
 
-    const result = await marketing.validateCoupon(tenant.id, 'OFF20', [
+    const result = await marketing.validateCoupon(SYSTEM_CONTEXT, tenant.id, 'OFF20', [
       { sku: 'SKU-1', quantity: 1, unitPrice: 100 },
     ])
     expect(result.valid).toBe(false)
@@ -70,7 +71,7 @@ describe('MarketingService — untargeted coupons (whole cart)', () => {
       discountValue: '500',
     })
 
-    const result = await marketing.validateCoupon(tenant.id, 'BIGOFF', [
+    const result = await marketing.validateCoupon(SYSTEM_CONTEXT, tenant.id, 'BIGOFF', [
       { sku: 'SKU-1', quantity: 1, unitPrice: 30 },
     ])
     expect(result.discountAmount).toBe(30)
@@ -89,7 +90,7 @@ describe('MarketingService — untargeted coupons (whole cart)', () => {
       minOrderAmount: '200.00',
     })
 
-    const result = await marketing.validateCoupon(tenant.id, 'MIN200', [
+    const result = await marketing.validateCoupon(SYSTEM_CONTEXT, tenant.id, 'MIN200', [
       { sku: 'SKU-1', quantity: 1, unitPrice: 50 },
     ])
     expect(result.valid).toBe(false)
@@ -109,7 +110,7 @@ describe('MarketingService — untargeted coupons (whole cart)', () => {
       expiresAt: new Date('2020-01-01'),
     })
 
-    const result = await marketing.validateCoupon(tenant.id, 'EXPIRED', [
+    const result = await marketing.validateCoupon(SYSTEM_CONTEXT, tenant.id, 'EXPIRED', [
       { sku: 'SKU-1', quantity: 1, unitPrice: 50 },
     ])
     expect(result.valid).toBe(false)
@@ -124,7 +125,7 @@ describe('MarketingService — targeted coupons (product/variant)', () => {
     const marketing = createMarketingService(db)
     const products = createProductsService(db)
 
-    const { variantIds } = await products.createProduct({
+    const { variantIds } = await products.createProduct(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       name: 'Classic Shirt',
       variants: [
@@ -141,7 +142,7 @@ describe('MarketingService — targeted coupons (product/variant)', () => {
       targetVariantId: variantIds[0], // SHIRT-BLK-40
     })
 
-    const result = await marketing.validateCoupon(tenant.id, 'SIZE40BLACK', [
+    const result = await marketing.validateCoupon(SYSTEM_CONTEXT, tenant.id, 'SIZE40BLACK', [
       { sku: 'SHIRT-BLK-40', quantity: 1, unitPrice: 100 },
       { sku: 'SHIRT-BLK-42', quantity: 1, unitPrice: 100 },
     ])
@@ -157,7 +158,7 @@ describe('MarketingService — targeted coupons (product/variant)', () => {
     const marketing = createMarketingService(db)
     const products = createProductsService(db)
 
-    const { productId } = await products.createProduct({
+    const { productId } = await products.createProduct(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       name: 'Classic Shirt',
       variants: [
@@ -174,7 +175,7 @@ describe('MarketingService — targeted coupons (product/variant)', () => {
       targetProductId: productId,
     })
 
-    const result = await marketing.validateCoupon(tenant.id, 'ALLSHIRT', [
+    const result = await marketing.validateCoupon(SYSTEM_CONTEXT, tenant.id, 'ALLSHIRT', [
       { sku: 'SHIRT-BLK-40', quantity: 1, unitPrice: 100 },
       { sku: 'SHIRT-BLK-42', quantity: 1, unitPrice: 100 },
       { sku: 'UNRELATED-SKU', quantity: 1, unitPrice: 50 },
@@ -191,7 +192,7 @@ describe('MarketingService — targeted coupons (product/variant)', () => {
     const marketing = createMarketingService(db)
     const products = createProductsService(db)
 
-    const { variantIds } = await products.createProduct({
+    const { variantIds } = await products.createProduct(SYSTEM_CONTEXT, {
       tenantId: tenant.id,
       name: 'Classic Shirt',
       variants: [{ sku: 'SHIRT-BLK-40', attributes: { color: 'black', size: '40' } }],
@@ -205,7 +206,7 @@ describe('MarketingService — targeted coupons (product/variant)', () => {
       targetVariantId: variantIds[0],
     })
 
-    const result = await marketing.validateCoupon(tenant.id, 'SIZE40BLACK', [
+    const result = await marketing.validateCoupon(SYSTEM_CONTEXT, tenant.id, 'SIZE40BLACK', [
       { sku: 'OTHER-SKU', quantity: 1, unitPrice: 100 },
     ])
     expect(result.valid).toBe(false)
@@ -227,11 +228,11 @@ describe('MarketingService.redeemCoupon', () => {
       maxUses: 1,
     })
 
-    const first = await marketing.redeemCoupon(tenant.id, 'ONEUSE')
+    const first = await marketing.redeemCoupon(SYSTEM_CONTEXT, tenant.id, 'ONEUSE')
     expect(first.success).toBe(true)
     expect(first.usesCount).toBe(1)
 
-    const second = await marketing.redeemCoupon(tenant.id, 'ONEUSE')
+    const second = await marketing.redeemCoupon(SYSTEM_CONTEXT, tenant.id, 'ONEUSE')
     expect(second.success).toBe(false)
     expect(second.usesCount).toBe(1)
   })
@@ -250,7 +251,7 @@ describe('MarketingService.redeemCoupon', () => {
     })
 
     const results = await Promise.all(
-      Array.from({ length: 8 }, () => marketing.redeemCoupon(tenant.id, 'LIMITED5'))
+      Array.from({ length: 8 }, () => marketing.redeemCoupon(SYSTEM_CONTEXT, tenant.id, 'LIMITED5'))
     )
     const successCount = results.filter((r) => r.success).length
     expect(successCount).toBe(5)
@@ -268,16 +269,49 @@ describe('MarketingService.activateCoupon / deactivateCoupon', () => {
       .values({ tenantId: tenant.id, code: 'TOGGLE', discountType: 'percentage', discountValue: '5' })
       .returning()
 
-    await marketing.deactivateCoupon(tenant.id, coupon.id)
-    const afterDeactivate = await marketing.validateCoupon(tenant.id, 'TOGGLE', [
+    await marketing.deactivateCoupon(SYSTEM_CONTEXT, tenant.id, coupon.id)
+    const afterDeactivate = await marketing.validateCoupon(SYSTEM_CONTEXT, tenant.id, 'TOGGLE', [
       { sku: 'SKU-1', quantity: 1, unitPrice: 10 },
     ])
     expect(afterDeactivate.reason).toBe('inactive')
 
-    await marketing.activateCoupon(tenant.id, coupon.id)
-    const afterActivate = await marketing.validateCoupon(tenant.id, 'TOGGLE', [
+    await marketing.activateCoupon(SYSTEM_CONTEXT, tenant.id, coupon.id)
+    const afterActivate = await marketing.validateCoupon(SYSTEM_CONTEXT, tenant.id, 'TOGGLE', [
       { sku: 'SKU-1', quantity: 1, unitPrice: 10 },
     ])
     expect(afterActivate.valid).toBe(true)
+  })
+})
+
+describe('MarketingService — RBAC', () => {
+  it('rejects staff activating a coupon (promotion management is a decision, not routine staff work)', async () => {
+    const db = await createTestDb()
+    const { tenant } = await seedTenantWithBranch(db)
+    const marketing = createMarketingService(db)
+    const staff = { userId: 'user-1', role: 'staff' as const, branchAccess: { type: 'all' as const } }
+
+    const [coupon] = await db
+      .insert(coupons)
+      .values({ tenantId: tenant.id, code: 'RBAC1', discountType: 'percentage', discountValue: '5' })
+      .returning()
+
+    await expect(marketing.activateCoupon(staff, tenant.id, coupon.id)).rejects.toThrow('role "staff"')
+  })
+
+  it('allows staff to validate and redeem a coupon at checkout', async () => {
+    const db = await createTestDb()
+    const { tenant } = await seedTenantWithBranch(db)
+    const marketing = createMarketingService(db)
+    const staff = { userId: 'user-1', role: 'staff' as const, branchAccess: { type: 'all' as const } }
+
+    await db.insert(coupons).values({ tenantId: tenant.id, code: 'RBAC2', discountType: 'percentage', discountValue: '10' })
+
+    const result = await marketing.validateCoupon(staff, tenant.id, 'RBAC2', [
+      { sku: 'SKU-1', quantity: 1, unitPrice: 100 },
+    ])
+    expect(result.valid).toBe(true)
+
+    const redeemed = await marketing.redeemCoupon(staff, tenant.id, 'RBAC2')
+    expect(redeemed.success).toBe(true)
   })
 })

@@ -2,6 +2,8 @@ import { eq, and } from 'drizzle-orm'
 import { employees, gratuityPayments } from '@/db/schema'
 import type { Db, DbOrTx } from '@/db/client'
 import { postJournalEntryInTx } from '../accounting/service'
+import { assertRoleAudited } from '../authz/service'
+import type { CallerContext } from '../authz/types'
 import type {
   GratuityService,
   GratuityCalculation,
@@ -9,6 +11,8 @@ import type {
   TerminateEmployeeResult,
   TerminationReason,
 } from './types'
+
+const GRATUITY_ROLES = ['owner', 'accountant'] as const
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100
@@ -64,16 +68,22 @@ async function fetchActiveEmployee(db: DbOrTx, tenantId: string, employeeId: str
 export function createGratuityService(db: Db): GratuityService {
   return {
     async previewEndOfServiceGratuity(
+      context: CallerContext,
       tenantId: string,
       employeeId: string,
       terminationDate: string,
       terminationReason: TerminationReason
     ): Promise<GratuityCalculation> {
+      assertRoleAudited(db, tenantId, context, [...GRATUITY_ROLES])
       const employee = await fetchActiveEmployee(db, tenantId, employeeId)
       return calculate(Number(employee.baseSalary), employee.hireDate, terminationDate, terminationReason)
     },
 
-    async terminateEmployee(input: TerminateEmployeeInput): Promise<TerminateEmployeeResult> {
+    async terminateEmployee(
+      context: CallerContext,
+      input: TerminateEmployeeInput
+    ): Promise<TerminateEmployeeResult> {
+      assertRoleAudited(db, input.tenantId, context, [...GRATUITY_ROLES])
       return db.transaction(async (tx) => {
         const employee = await fetchActiveEmployee(tx, input.tenantId, input.employeeId)
         if (employee.status === 'terminated') {

@@ -1,3 +1,5 @@
+import type { CallerContext } from '../authz/types'
+
 export type LeaveType = 'annual' | 'sick' | 'unpaid' | 'other'
 export type LeaveRequestStatus = 'pending' | 'approved' | 'rejected'
 export type SickPayTier = 'full' | 'three_quarters' | 'unpaid'
@@ -37,20 +39,28 @@ export interface LeaveRequest {
   sickPayTier?: SickPayTier
 }
 
+// HR administration — owner/accountant/branch_manager, staff excluded
+// (self-service leave requests by the employee themselves are deferred
+// along with employee login, see docs/ARCHITECTURE.md).
 export interface LeaveService {
   // Art. 109: 21 days/year, rising to 30 days/year once the employee has
   // completed 5 years of continuous service as of the given year's end.
   // Computed from employees.hireDate on every call, not stored — a later
   // year automatically gets the higher entitlement once tenure crosses 5
   // years, with no migration/backfill needed.
-  getAnnualLeaveBalance(tenantId: string, employeeId: string, year: number): Promise<AnnualLeaveBalance>
+  getAnnualLeaveBalance(
+    context: CallerContext,
+    tenantId: string,
+    employeeId: string,
+    year: number
+  ): Promise<AnnualLeaveBalance>
 
   // Inserts a 'pending' leave_requests row. For leaveType='annual', rejects
   // if the requested days would exceed the remaining annual balance for
   // that year. For leaveType='sick', computes (but does not persist) the
   // art. 117 pay tier from prior approved sick days in the same year.
-  createLeaveRequest(input: CreateLeaveRequestInput): Promise<LeaveRequest>
+  createLeaveRequest(context: CallerContext, input: CreateLeaveRequestInput): Promise<LeaveRequest>
 
-  approveLeaveRequest(tenantId: string, leaveRequestId: string): Promise<LeaveRequest>
-  rejectLeaveRequest(tenantId: string, leaveRequestId: string): Promise<LeaveRequest>
+  approveLeaveRequest(context: CallerContext, tenantId: string, leaveRequestId: string): Promise<LeaveRequest>
+  rejectLeaveRequest(context: CallerContext, tenantId: string, leaveRequestId: string): Promise<LeaveRequest>
 }
