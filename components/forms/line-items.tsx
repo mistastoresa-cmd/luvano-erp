@@ -10,8 +10,11 @@ export interface LineColumn {
   label: string
   type?: 'text' | 'number' | 'select'
   placeholder?: string
-  options?: { value: string; label: string }[]
-  // Tailwind col-span within the 12-column row grid.
+  // `patch` lets one selection fill several fields at once — picking a
+  // product fills its name and price into the same row, so the user never
+  // retypes a SKU by hand.
+  options?: { value: string; label: string; patch?: Record<string, string> }[]
+  // Tailwind col-span within the row grid.
   span?: string
 }
 
@@ -45,6 +48,12 @@ export function LineItemsEditor({
 }) {
   function update(id: number, key: string, value: string) {
     onChange(rows.map((r) => (r.id === id ? { ...r, [key]: value } : r)))
+  }
+  // Picking an option can carry a `patch` that fills sibling fields in the
+  // same row (e.g. selecting a product fills its name + sell price).
+  function select(id: number, column: LineColumn, value: string) {
+    const patch = column.options?.find((o) => o.value === value)?.patch ?? {}
+    onChange(rows.map((r) => (r.id === id ? { ...r, [column.key]: value, ...patch } : r)))
   }
   function add() {
     onChange([...rows, emptyRow(nextId, columns)])
@@ -92,7 +101,7 @@ export function LineItemsEditor({
                   {c.type === 'select' ? (
                     <select
                       value={row[c.key] ?? ''}
-                      onChange={(e) => update(row.id, c.key, e.target.value)}
+                      onChange={(e) => select(row.id, c, e.target.value)}
                       className="mt-1 h-9 w-full rounded-lg border border-[color:var(--border-default)] bg-[color:var(--surface)] px-3 text-sm text-[color:var(--text-primary)] outline-none focus:border-accent-500"
                     >
                       <option value="">اختر…</option>

@@ -10,20 +10,46 @@ import { LineItemsEditor, emptyRow, type LineColumn, type LineRow } from '@/comp
 import type { ActionState } from '@/lib/authz/action-session'
 import { createPurchaseOrderAction } from '../actions'
 
-const COLUMNS: LineColumn[] = [
-  { key: 'sku', label: 'رمز الصنف (SKU)', placeholder: 'MISTA-OUD-1' },
-  { key: 'productName', label: 'اسم الصنف', placeholder: 'عود ملكي' },
-  { key: 'quantityOrdered', label: 'الكمية', type: 'number', placeholder: '10' },
-  { key: 'unitCost', label: 'تكلفة الوحدة (ر.س)', type: 'number', placeholder: '150' },
-]
+export interface CatalogItem {
+  sku: string
+  name: string
+  costPrice: string | null
+}
+
+function buildColumns(catalog: CatalogItem[]): LineColumn[] {
+  const skuColumn: LineColumn =
+    catalog.length > 0
+      ? {
+          key: 'sku',
+          label: 'الصنف',
+          type: 'select',
+          span: 'sm:col-span-2',
+          options: catalog.map((c) => ({
+            value: c.sku,
+            label: `${c.name} · ${c.sku}`,
+            patch: { productName: c.name, unitCost: c.costPrice ?? '' },
+          })),
+        }
+      : { key: 'sku', label: 'رمز الصنف (SKU)', placeholder: 'MISTA-OUD-1' }
+
+  return [
+    skuColumn,
+    { key: 'productName', label: 'اسم الصنف', placeholder: 'عود ملكي' },
+    { key: 'quantityOrdered', label: 'الكمية', type: 'number', placeholder: '10' },
+    { key: 'unitCost', label: 'تكلفة الوحدة (ر.س)', type: 'number', placeholder: '150' },
+  ]
+}
 
 export function PurchaseOrderForm({
   branches,
   suppliers,
+  catalog,
 }: {
   branches: { id: string; name: string }[]
   suppliers: { id: string; name: string }[]
+  catalog: CatalogItem[]
 }) {
+  const COLUMNS = buildColumns(catalog)
   const [rows, setRows] = useState<LineRow[]>([emptyRow(1, COLUMNS)])
   const [nextId, setNextId] = useState(2)
   const [state, formAction, pending] = useActionState<ActionState, FormData>(

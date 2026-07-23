@@ -6,7 +6,7 @@ import { CaretLeft } from '@phosphor-icons/react/dist/ssr'
 import { getDb } from '@/db/client'
 import { resolveDashboardSession } from '@/lib/authz/session'
 import { hasBranchAccess } from '@/lib/authz/types'
-import { branches } from '@/db/schema'
+import { branches, products, productVariants } from '@/db/schema'
 import { Card, CardContent } from '@/components/ui/card'
 import { SaleInvoiceForm } from './invoice-form'
 
@@ -16,11 +16,19 @@ export default async function NewSaleInvoicePage() {
   const { tenantId, context } = session
 
   const db = await getDb()
-  const rows = await db
-    .select()
-    .from(branches)
-    .where(eq(branches.tenantId, tenantId))
-    .orderBy(branches.name)
+  const [rows, catalog] = await Promise.all([
+    db.select().from(branches).where(eq(branches.tenantId, tenantId)).orderBy(branches.name),
+    db
+      .select({
+        sku: productVariants.sku,
+        name: products.name,
+        sellPrice: productVariants.sellPrice,
+      })
+      .from(productVariants)
+      .innerJoin(products, eq(productVariants.productId, products.id))
+      .where(eq(productVariants.tenantId, tenantId))
+      .orderBy(products.name),
+  ])
   const visible = rows.filter((b) => hasBranchAccess(context.branchAccess, b.id))
 
   return (
@@ -51,7 +59,10 @@ export default async function NewSaleInvoicePage() {
           </CardContent>
         </Card>
       ) : (
-        <SaleInvoiceForm branches={visible.map((b) => ({ id: b.id, name: b.name }))} />
+        <SaleInvoiceForm
+          branches={visible.map((b) => ({ id: b.id, name: b.name }))}
+          catalog={catalog}
+        />
       )}
     </div>
   )

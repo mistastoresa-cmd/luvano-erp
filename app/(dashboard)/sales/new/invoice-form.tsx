@@ -10,15 +10,46 @@ import { LineItemsEditor, emptyRow, type LineColumn, type LineRow } from '@/comp
 import type { ActionState } from '@/lib/authz/action-session'
 import { createSaleInvoiceAction } from '../actions'
 
-const COLUMNS: LineColumn[] = [
-  { key: 'sku', label: 'رمز الصنف (SKU)', placeholder: 'MISTA-OUD-1' },
-  { key: 'productName', label: 'اسم الصنف', placeholder: 'عود ملكي' },
-  { key: 'quantity', label: 'الكمية', type: 'number', placeholder: '1' },
-  { key: 'unitPrice', label: 'سعر الوحدة (ر.س)', type: 'number', placeholder: '320' },
-  { key: 'tax', label: 'الضريبة (ر.س)', type: 'number', placeholder: '48' },
-]
+export interface CatalogItem {
+  sku: string
+  name: string
+  sellPrice: string | null
+}
 
-export function SaleInvoiceForm({ branches }: { branches: { id: string; name: string }[] }) {
+function buildColumns(catalog: CatalogItem[]): LineColumn[] {
+  const skuColumn: LineColumn =
+    catalog.length > 0
+      ? {
+          key: 'sku',
+          label: 'الصنف',
+          type: 'select',
+          span: 'sm:col-span-2',
+          options: catalog.map((c) => ({
+            value: c.sku,
+            label: `${c.name} · ${c.sku}`,
+            // Selecting a product fills its name + sell price automatically.
+            patch: { productName: c.name, unitPrice: c.sellPrice ?? '' },
+          })),
+        }
+      : { key: 'sku', label: 'رمز الصنف (SKU)', placeholder: 'MISTA-OUD-1' }
+
+  return [
+    skuColumn,
+    { key: 'productName', label: 'اسم الصنف', placeholder: 'عود ملكي' },
+    { key: 'quantity', label: 'الكمية', type: 'number', placeholder: '1' },
+    { key: 'unitPrice', label: 'سعر الوحدة (ر.س)', type: 'number', placeholder: '320' },
+    { key: 'tax', label: 'الضريبة (ر.س)', type: 'number', placeholder: '48' },
+  ]
+}
+
+export function SaleInvoiceForm({
+  branches,
+  catalog,
+}: {
+  branches: { id: string; name: string }[]
+  catalog: CatalogItem[]
+}) {
+  const COLUMNS = buildColumns(catalog)
   const [rows, setRows] = useState<LineRow[]>([emptyRow(1, COLUMNS)])
   const [nextId, setNextId] = useState(2)
   const [state, formAction, pending] = useActionState<ActionState, FormData>(

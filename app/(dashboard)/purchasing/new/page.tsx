@@ -6,7 +6,7 @@ import { CaretLeft } from '@phosphor-icons/react/dist/ssr'
 import { getDb } from '@/db/client'
 import { resolveDashboardSession } from '@/lib/authz/session'
 import { hasBranchAccess } from '@/lib/authz/types'
-import { branches, suppliers } from '@/db/schema'
+import { branches, suppliers, products, productVariants } from '@/db/schema'
 import { Card, CardContent } from '@/components/ui/card'
 import { PurchaseOrderForm } from './po-form'
 
@@ -16,9 +16,19 @@ export default async function NewPurchaseOrderPage() {
   const { tenantId, context } = session
 
   const db = await getDb()
-  const [branchRows, supplierRows] = await Promise.all([
+  const [branchRows, supplierRows, catalog] = await Promise.all([
     db.select().from(branches).where(eq(branches.tenantId, tenantId)).orderBy(branches.name),
     db.select().from(suppliers).where(eq(suppliers.tenantId, tenantId)).orderBy(suppliers.name),
+    db
+      .select({
+        sku: productVariants.sku,
+        name: products.name,
+        costPrice: productVariants.costPrice,
+      })
+      .from(productVariants)
+      .innerJoin(products, eq(productVariants.productId, products.id))
+      .where(eq(productVariants.tenantId, tenantId))
+      .orderBy(products.name),
   ])
   const visibleBranches = branchRows.filter((b) => hasBranchAccess(context.branchAccess, b.id))
 
@@ -64,6 +74,7 @@ export default async function NewPurchaseOrderPage() {
         <PurchaseOrderForm
           branches={visibleBranches.map((b) => ({ id: b.id, name: b.name }))}
           suppliers={supplierRows.map((s) => ({ id: s.id, name: s.name }))}
+          catalog={catalog}
         />
       )}
     </div>
