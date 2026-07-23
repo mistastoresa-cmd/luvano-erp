@@ -96,7 +96,11 @@ export default async function PurchasingPage() {
           <TableBody>
             {visible.map((r) => (
               <TableRow key={r.id}>
-                <TableCell className="font-medium">{r.poNumber}</TableCell>
+                <TableCell>
+                  <Link href={`/purchasing/${r.id}`} className="font-medium text-accent-600 hover:underline">
+                    {r.poNumber}
+                  </Link>
+                </TableCell>
                 <TableCell>{r.supplierName}</TableCell>
                 <TableCell>{r.branchName}</TableCell>
                 <TableCell>
