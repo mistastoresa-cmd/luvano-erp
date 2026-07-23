@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { PageHeader } from '@/components/app-shell/page-header'
 import { AddResourceDialog } from '@/components/forms/resource-form'
+import { MarketingTabs } from './marketing-tabs'
 import { createCouponAction } from './actions'
 import {
   Table,
@@ -40,7 +41,7 @@ export default async function MarketingPage() {
     <div className="space-y-6">
       <PageHeader
         title="التسويق والعروض"
-        subtitle="كوبونات الخصم وحالتها"
+        subtitle="كوبونات الخصم التي يُدخلها العميل بكود"
         action={
           <AddResourceDialog
             title="إضافة كوبون"
@@ -64,6 +65,7 @@ export default async function MarketingPage() {
           />
         }
       />
+      <MarketingTabs active="coupons" />
 
       <Card>
         <Table>
