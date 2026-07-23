@@ -4,8 +4,12 @@ import { eq, and, desc } from 'drizzle-orm'
 import { getDb } from '@/db/client'
 import { resolveDashboardSession } from '@/lib/authz/session'
 import { chartOfAccounts, journalEntries } from '@/db/schema'
+import Link from 'next/link'
+import { Plus } from '@phosphor-icons/react/dist/ssr'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { PageHeader } from '@/components/app-shell/page-header'
 import {
   Table,
   TableHead,
@@ -54,12 +58,18 @@ export default async function AccountingPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-lg font-semibold text-[color:var(--text-primary)]">المحاسبة</h1>
-        <p className="mt-1 text-sm text-[color:var(--text-tertiary)]">
-          شجرة الحسابات والقيود المحاسبية
-        </p>
-      </div>
+      <PageHeader
+        title="المحاسبة"
+        subtitle="شجرة الحسابات والقيود المحاسبية"
+        action={
+          <Link href="/accounting/journal/new">
+            <Button>
+              <Plus size={16} weight="bold" />
+              قيد يدوي
+            </Button>
+          </Link>
+        }
+      />
 
       <Card>
         <CardHeader>

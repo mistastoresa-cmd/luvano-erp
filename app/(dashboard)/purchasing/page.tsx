@@ -5,8 +5,12 @@ import { getDb } from '@/db/client'
 import { resolveDashboardSession } from '@/lib/authz/session'
 import { hasBranchAccess } from '@/lib/authz/types'
 import { purchaseOrders, suppliers, branches } from '@/db/schema'
+import Link from 'next/link'
+import { Plus } from '@phosphor-icons/react/dist/ssr'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { PageHeader } from '@/components/app-shell/page-header'
 import {
   Table,
   TableHead,
@@ -64,12 +68,18 @@ export default async function PurchasingPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-lg font-semibold text-[color:var(--text-primary)]">المشتريات</h1>
-        <p className="mt-1 text-sm text-[color:var(--text-tertiary)]">
-          أوامر الشراء ومراحل استلامها من الموردين
-        </p>
-      </div>
+      <PageHeader
+        title="المشتريات"
+        subtitle="أوامر الشراء ومراحل استلامها من الموردين"
+        action={
+          <Link href="/purchasing/new">
+            <Button>
+              <Plus size={16} weight="bold" />
+              أمر شراء جديد
+            </Button>
+          </Link>
+        }
+      />
 
       <Card>
         <Table>

@@ -6,8 +6,11 @@ import { getDb } from '@/db/client'
 import { resolveDashboardSession } from '@/lib/authz/session'
 import { hasBranchAccess } from '@/lib/authz/types'
 import { saleInvoices, branches } from '@/db/schema'
+import { Plus } from '@phosphor-icons/react/dist/ssr'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { PageHeader } from '@/components/app-shell/page-header'
 import {
   Table,
   TableHead,
@@ -70,12 +73,18 @@ export default async function SalesPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-lg font-semibold text-[color:var(--text-primary)]">فواتير البيع</h1>
-        <p className="mt-1 text-sm text-[color:var(--text-tertiary)]">
-          آخر {visibleRows.length} فاتورة — اضغط على أي فاتورة لعرض دورتها المستندية الكاملة
-        </p>
-      </div>
+      <PageHeader
+        title="فواتير البيع"
+        subtitle={`آخر ${visibleRows.length} فاتورة — اضغط على أي فاتورة لعرض دورتها المستندية الكاملة`}
+        action={
+          <Link href="/sales/new">
+            <Button>
+              <Plus size={16} weight="bold" />
+              فاتورة جديدة
+            </Button>
+          </Link>
+        }
+      />
 
       <Card>
         <Table>
