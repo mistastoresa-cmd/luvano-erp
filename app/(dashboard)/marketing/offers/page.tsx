@@ -26,6 +26,8 @@ const TYPE_LABELS: Record<string, string> = {
   quantity_tiers: 'جدول خصومات',
   buy_x_get_y: 'اشترِ واحصل',
   loyalty_tier: 'فئة ولاء',
+  bank_offer: 'عرض بنكي',
+  cashback: 'كاش باك',
 }
 
 function fmtDate(d: Date | null): string {

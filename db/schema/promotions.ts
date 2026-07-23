@@ -29,6 +29,12 @@ export const promotionOfferTypes = [
   'quantity_tiers',
   'buy_x_get_y',
   'loyalty_tier',
+  // عرض بنكي — خصم عند الدفع ببطاقة بنك معيّن.
+  // config: { bankName, discountPct, minOrderAmount? }
+  'bank_offer',
+  // كاش باك — نسبة تُعاد لمحفظة العميل بدل خصم فوري.
+  // config: { cashbackPct, maxCashback? }
+  'cashback',
 ] as const
 
 export const promotions = pgTable(

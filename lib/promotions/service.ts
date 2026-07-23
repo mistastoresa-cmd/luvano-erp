@@ -14,6 +14,8 @@ import type {
   QuantityTiersConfig,
   BuyXGetYConfig,
   LoyaltyTierConfig,
+  BankOfferConfig,
+  CashbackConfig,
 } from './types'
 
 // Evaluating offers happens at checkout, so every role that can ring up a
@@ -97,6 +99,28 @@ function discountForLoyaltyTier(
   return lines.reduce((sum, l) => sum + l.unitPrice * l.quantity * (cfg.discountPct / 100), 0)
 }
 
+function linesTotal(lines: CartLine[]): number {
+  return lines.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0)
+}
+
+function discountForBankOffer(
+  cfg: BankOfferConfig,
+  lines: CartLine[],
+  bankName: string | undefined
+): number {
+  if (!bankName || bankName !== cfg.bankName) return 0
+  const total = linesTotal(lines)
+  if (cfg.minOrderAmount != null && total < cfg.minOrderAmount) return 0
+  return total * (cfg.discountPct / 100)
+}
+
+// Cashback is credited, not discounted — returned separately from the
+// invoice discount so totals aren't reduced twice.
+function cashbackFor(cfg: CashbackConfig, lines: CartLine[]): number {
+  const raw = linesTotal(lines) * (cfg.cashbackPct / 100)
+  return cfg.maxCashback != null ? Math.min(raw, cfg.maxCashback) : raw
+}
+
 export function createPromotionsService(db: Db): PromotionsService {
   return {
     async applyPromotions(
@@ -113,6 +137,7 @@ export function createPromotionsService(db: Db): PromotionsService {
         .where(and(eq(promotions.tenantId, tenantId), eq(promotions.isActive, true)))
 
       const applied: AppliedPromotion[] = []
+      let totalCashback = 0
 
       for (const p of rows) {
         // Date window — a promotion with no start/end runs indefinitely.
@@ -123,6 +148,24 @@ export function createPromotionsService(db: Db): PromotionsService {
         if (lines.length === 0) continue
 
         const cfg = (p.config ?? {}) as Record<string, unknown>
+
+        // Cashback is credited, not discounted — handled before the discount
+        // switch so it never reduces the invoice total.
+        if (p.offerType === 'cashback') {
+          const amount = round2(cashbackFor(cfg as unknown as CashbackConfig, lines))
+          if (amount > 0) {
+            totalCashback += amount
+            applied.push({
+              promotionId: p.id,
+              name: p.name,
+              offerType: p.offerType,
+              discountAmount: 0,
+              affectedSkus: lines.map((l) => l.sku),
+            })
+          }
+          continue
+        }
+
         let discount = 0
         switch (p.offerType) {
           case 'product_discount':
@@ -144,6 +187,13 @@ export function createPromotionsService(db: Db): PromotionsService {
               input.customerTier
             )
             break
+          case 'bank_offer':
+            discount = discountForBankOffer(
+              cfg as unknown as BankOfferConfig,
+              lines,
+              input.bankName
+            )
+            break
         }
 
         discount = round2(discount)
@@ -161,6 +211,7 @@ export function createPromotionsService(db: Db): PromotionsService {
       return {
         appliedPromotions: applied,
         totalDiscount: round2(applied.reduce((s, a) => s + a.discountAmount, 0)),
+        totalCashback: round2(totalCashback),
       }
     },
   }

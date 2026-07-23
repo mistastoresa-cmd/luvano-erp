@@ -54,6 +54,17 @@ function buildConfig(type: OfferType, fd: FormData): { config: unknown; displayV
       const discountPct = n(fd.get('loyaltyDiscountPct')) ?? 0
       return { config: { tier, discountPct }, displayValue: discountPct }
     }
+    case 'bank_offer': {
+      const bankName = String(fd.get('bankName') ?? '').trim()
+      const discountPct = n(fd.get('bankDiscountPct')) ?? 0
+      const minOrderAmount = n(fd.get('bankMinOrder'))
+      return { config: { bankName, discountPct, minOrderAmount }, displayValue: discountPct }
+    }
+    case 'cashback': {
+      const cashbackPct = n(fd.get('cashbackPct')) ?? 0
+      const maxCashback = n(fd.get('maxCashback'))
+      return { config: { cashbackPct, maxCashback }, displayValue: cashbackPct }
+    }
   }
 }
 

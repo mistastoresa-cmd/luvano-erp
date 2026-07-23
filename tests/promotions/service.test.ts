@@ -191,6 +191,55 @@ describe('PromotionsService.applyPromotions', () => {
     expect(res.appliedPromotions[0].affectedSkus).toEqual(['A'])
   })
 
+  it('applies a bank offer only for the matching bank and above its minimum', async () => {
+    const db = await createTestDb()
+    const { tenant } = await seedTenantWithBranch(db)
+    await addPromotion(db, tenant.id, {
+      name: 'خصم بنك الراجحي',
+      offerType: 'bank_offer',
+      config: { bankName: 'الراجحي', discountPct: 10, minOrderAmount: 500 },
+    })
+    const svc = createPromotionsService(db)
+
+    const matching = await svc.applyPromotions(staff, tenant.id, {
+      lines: [line({ quantity: 10, unitPrice: 100 })],
+      bankName: 'الراجحي',
+    })
+    expect(matching.totalDiscount).toBe(100)
+
+    const otherBank = await svc.applyPromotions(staff, tenant.id, {
+      lines: [line({ quantity: 10, unitPrice: 100 })],
+      bankName: 'الأهلي',
+    })
+    expect(otherBank.totalDiscount).toBe(0)
+
+    // Matching bank but the order is under the 500 minimum.
+    const tooSmall = await svc.applyPromotions(staff, tenant.id, {
+      lines: [line({ quantity: 1, unitPrice: 100 })],
+      bankName: 'الراجحي',
+    })
+    expect(tooSmall.totalDiscount).toBe(0)
+  })
+
+  it('credits cashback separately without discounting the invoice, respecting its cap', async () => {
+    const db = await createTestDb()
+    const { tenant } = await seedTenantWithBranch(db)
+    await addPromotion(db, tenant.id, {
+      name: 'كاش باك 5%',
+      offerType: 'cashback',
+      config: { cashbackPct: 5, maxCashback: 30 },
+    })
+
+    const res = await createPromotionsService(db).applyPromotions(staff, tenant.id, {
+      lines: [line({ quantity: 10, unitPrice: 100 })],
+    })
+
+    // 5% of 1000 = 50, capped at 30 — and it must not reduce the invoice.
+    expect(res.totalCashback).toBe(30)
+    expect(res.totalDiscount).toBe(0)
+    expect(res.appliedPromotions).toHaveLength(1)
+  })
+
   it('sums multiple active promotions', async () => {
     const db = await createTestDb()
     const { tenant } = await seedTenantWithBranch(db)

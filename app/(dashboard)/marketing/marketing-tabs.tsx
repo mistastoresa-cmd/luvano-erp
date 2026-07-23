@@ -3,11 +3,12 @@ import Link from 'next/link'
 const TABS = [
   { key: 'coupons', label: 'الكوبونات', href: '/marketing' },
   { key: 'offers', label: 'العروض الخاصة', href: '/marketing/offers' },
+  { key: 'calendar', label: 'الجدول الزمني', href: '/marketing/calendar' },
 ] as const
 
-// Sub-navigation for the marketing module. More sections (عروض البنك، الكاش
-// باك، الجدول الزمني) will be added here as they're built.
-export function MarketingTabs({ active }: { active: 'coupons' | 'offers' }) {
+// Sub-navigation for the marketing module. Bank offers and cashback are
+// offer *types* inside العروض الخاصة rather than separate sections.
+export function MarketingTabs({ active }: { active: 'coupons' | 'offers' | 'calendar' }) {
   return (
     <div className="flex gap-1 border-b border-[color:var(--border-subtle)]">
       {TABS.map((t) => (

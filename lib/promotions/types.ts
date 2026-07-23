@@ -25,6 +25,16 @@ export interface LoyaltyTierConfig {
   tier: LoyaltyTier
   discountPct: number
 }
+export interface BankOfferConfig {
+  bankName: string
+  discountPct: number
+  minOrderAmount?: number
+}
+export interface CashbackConfig {
+  cashbackPct: number
+  // Optional ceiling on the cashback credited per order.
+  maxCashback?: number
+}
 
 // A single line the customer is buying, as the checkout passes it in.
 export interface CartLine {
@@ -48,13 +58,19 @@ export interface ApplyPromotionsInput {
   lines: CartLine[]
   // Needed only by loyalty_tier offers; omit for anonymous/walk-in sales.
   customerTier?: LoyaltyTier
+  // Needed only by bank_offer offers — the paying card's bank.
+  bankName?: string
   // Defaults to now — lets callers evaluate a cart against a past/future date.
   at?: Date
 }
 
 export interface ApplyPromotionsResult {
   appliedPromotions: AppliedPromotion[]
+  // Immediate discount taken off the invoice.
   totalDiscount: number
+  // Credited back to the customer's wallet instead of discounting the
+  // invoice — kept separate so invoice totals stay untouched by cashback.
+  totalCashback: number
 }
 
 export interface PromotionsService {

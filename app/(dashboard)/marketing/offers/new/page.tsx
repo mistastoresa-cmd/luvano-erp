@@ -8,6 +8,8 @@ import {
   ChartBar,
   Gift,
   Crown,
+  Bank,
+  Wallet,
   CaretLeft,
   ArrowRight,
 } from '@phosphor-icons/react'
@@ -17,7 +19,14 @@ import { Label } from '@/components/ui/label'
 import type { ActionState } from '@/lib/authz/action-session'
 import { createPromotionAction } from '../actions'
 
-type OfferType = 'product_discount' | 'fixed_price' | 'quantity_tiers' | 'buy_x_get_y' | 'loyalty_tier'
+type OfferType =
+  | 'product_discount'
+  | 'fixed_price'
+  | 'quantity_tiers'
+  | 'buy_x_get_y'
+  | 'loyalty_tier'
+  | 'bank_offer'
+  | 'cashback'
 
 const OFFER_TYPES: {
   type: OfferType
@@ -60,6 +69,20 @@ const OFFER_TYPES: {
     desc: 'كافئ عملاءك بخصم حسب فئة ولائهم.',
     icon: <Crown size={22} weight="bold" />,
     tint: 'bg-[oklch(0.55_0.2_300/0.12)] text-[oklch(0.55_0.2_300)]',
+  },
+  {
+    type: 'bank_offer',
+    title: 'عرض بنكي',
+    desc: 'خصم عند الدفع ببطاقة بنك معيّن.',
+    icon: <Bank size={22} weight="bold" />,
+    tint: 'bg-[oklch(0.6_0.15_220/0.14)] text-[oklch(0.5_0.15_220)]',
+  },
+  {
+    type: 'cashback',
+    title: 'كاش باك',
+    desc: 'نسبة تُعاد لمحفظة العميل بدل خصم فوري.',
+    icon: <Wallet size={22} weight="bold" />,
+    tint: 'bg-[oklch(0.65_0.16_160/0.14)] text-[oklch(0.5_0.14_160)]',
   },
 ]
 
@@ -263,6 +286,36 @@ function TypeFields({ type }: { type: OfferType }) {
           <div>
             <Label htmlFor="loyaltyDiscountPct">نسبة الخصم (%) *</Label>
             <Input id="loyaltyDiscountPct" name="loyaltyDiscountPct" type="number" step="any" required placeholder="30" />
+          </div>
+        </>
+      )
+    case 'bank_offer':
+      return (
+        <>
+          <div>
+            <Label htmlFor="bankName">اسم البنك *</Label>
+            <Input id="bankName" name="bankName" required placeholder="الراجحي" />
+          </div>
+          <div>
+            <Label htmlFor="bankDiscountPct">نسبة الخصم (%) *</Label>
+            <Input id="bankDiscountPct" name="bankDiscountPct" type="number" step="any" required placeholder="10" />
+          </div>
+          <div className="sm:col-span-2">
+            <Label htmlFor="bankMinOrder">أقل مبلغ للطلب (ر.س — اختياري)</Label>
+            <Input id="bankMinOrder" name="bankMinOrder" type="number" step="any" placeholder="500" />
+          </div>
+        </>
+      )
+    case 'cashback':
+      return (
+        <>
+          <div>
+            <Label htmlFor="cashbackPct">نسبة الكاش باك (%) *</Label>
+            <Input id="cashbackPct" name="cashbackPct" type="number" step="any" required placeholder="5" />
+          </div>
+          <div>
+            <Label htmlFor="maxCashback">أقصى مبلغ كاش باك (ر.س — اختياري)</Label>
+            <Input id="maxCashback" name="maxCashback" type="number" step="any" placeholder="30" />
           </div>
         </>
       )
