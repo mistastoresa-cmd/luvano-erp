@@ -9,7 +9,7 @@ import { requireActionSession, type ActionState } from '@/lib/authz/action-sessi
 import { createLedgerService } from '@/lib/ledger/service'
 import { createPromotionsService } from '@/lib/promotions/service'
 import { ForbiddenError } from '@/lib/authz/errors'
-import { saleInvoices, productVariants } from '@/db/schema'
+import { saleInvoices, productVariants, products } from '@/db/schema'
 import type { CartLine } from '@/lib/promotions/types'
 
 function round2(n: number): number {
@@ -92,8 +92,14 @@ export async function createSaleInvoiceAction(
     // then ask the promotions engine what discount this cart earns.
     const skus = lines.map((l) => l.sku)
     const variants = await db
-      .select({ sku: productVariants.sku, id: productVariants.id, productId: productVariants.productId })
+      .select({
+        sku: productVariants.sku,
+        id: productVariants.id,
+        productId: productVariants.productId,
+        category: products.category,
+      })
       .from(productVariants)
+      .innerJoin(products, eq(productVariants.productId, products.id))
       .where(and(eq(productVariants.tenantId, tenantId), inArray(productVariants.sku, skus)))
     const bySku = new Map(variants.map((v) => [v.sku, v]))
 
@@ -101,6 +107,7 @@ export async function createSaleInvoiceAction(
       sku: l.sku,
       productId: bySku.get(l.sku)?.productId,
       variantId: bySku.get(l.sku)?.id,
+      category: bySku.get(l.sku)?.category ?? undefined,
       quantity: l.quantity,
       unitPrice: l.unitPrice,
     }))

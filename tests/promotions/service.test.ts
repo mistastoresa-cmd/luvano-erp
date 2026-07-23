@@ -240,6 +240,28 @@ describe('PromotionsService.applyPromotions', () => {
     expect(res.appliedPromotions).toHaveLength(1)
   })
 
+  it('limits a category-targeted promotion to lines in that category', async () => {
+    const db = await createTestDb()
+    const { tenant } = await seedTenantWithBranch(db)
+    await addPromotion(db, tenant.id, {
+      name: 'خصم العطور الرجالية',
+      offerType: 'product_discount',
+      config: { discountType: 'percentage', value: 20 },
+      targetCategory: 'عطور رجالية',
+    })
+
+    const res = await createPromotionsService(db).applyPromotions(staff, tenant.id, {
+      lines: [
+        line({ sku: 'A', category: 'عطور رجالية', quantity: 1, unitPrice: 100 }),
+        line({ sku: 'B', category: 'عطور نسائية', quantity: 1, unitPrice: 300 }),
+      ],
+    })
+
+    // Only the matching-category line is discounted (20% of 100).
+    expect(res.totalDiscount).toBe(20)
+    expect(res.appliedPromotions[0].affectedSkus).toEqual(['A'])
+  })
+
   it('sums multiple active promotions', async () => {
     const db = await createTestDb()
     const { tenant } = await seedTenantWithBranch(db)

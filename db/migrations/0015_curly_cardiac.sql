@@ -1,0 +1,1 @@
+ALTER TABLE "promotions" ADD COLUMN "target_category" text;

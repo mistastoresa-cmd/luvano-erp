@@ -41,6 +41,8 @@ export interface CartLine {
   sku: string
   productId?: string
   variantId?: string
+  // The line's product category — used by category-targeted promotions.
+  category?: string
   quantity: number
   unitPrice: number
 }

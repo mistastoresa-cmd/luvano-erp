@@ -27,17 +27,19 @@ function round2(n: number): number {
 }
 
 // A promotion with no target applies to the whole cart; otherwise only to
-// lines matching its product/variant.
+// lines matching its variant, product, or category.
 function matchingLines(
   lines: CartLine[],
   targetProductId: string | null,
-  targetVariantId: string | null
+  targetVariantId: string | null,
+  targetCategory: string | null
 ): CartLine[] {
-  if (!targetProductId && !targetVariantId) return lines
+  if (!targetProductId && !targetVariantId && !targetCategory) return lines
   return lines.filter(
     (l) =>
       (targetVariantId && l.variantId === targetVariantId) ||
-      (targetProductId && l.productId === targetProductId)
+      (targetProductId && l.productId === targetProductId) ||
+      (targetCategory && l.category === targetCategory)
   )
 }
 
@@ -144,7 +146,12 @@ export function createPromotionsService(db: Db): PromotionsService {
         if (p.startsAt && at < p.startsAt) continue
         if (p.expiresAt && at > p.expiresAt) continue
 
-        const lines = matchingLines(input.lines, p.targetProductId, p.targetVariantId)
+        const lines = matchingLines(
+          input.lines,
+          p.targetProductId,
+          p.targetVariantId,
+          p.targetCategory
+        )
         if (lines.length === 0) continue
 
         const cfg = (p.config ?? {}) as Record<string, unknown>

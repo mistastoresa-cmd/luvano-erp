@@ -84,6 +84,13 @@ export async function createPromotionAction(
 
     const { config, displayValue } = buildConfig(offerType, formData)
 
+    // Targeting: whole store, a specific product, or a category.
+    const targetScope = String(formData.get('targetScope') ?? 'all')
+    const targetProductId =
+      targetScope === 'product' ? String(formData.get('targetProductId') ?? '').trim() || null : null
+    const targetCategory =
+      targetScope === 'category' ? String(formData.get('targetCategory') ?? '').trim() || null : null
+
     const db = await getDb()
     await db.insert(promotions).values({
       tenantId,
@@ -91,6 +98,8 @@ export async function createPromotionAction(
       offerType,
       config: config as object,
       displayValue: displayValue != null ? String(displayValue) : null,
+      targetProductId,
+      targetCategory,
       startsAt: date(formData.get('startsAt')),
       expiresAt: date(formData.get('expiresAt')),
       isActive: true,

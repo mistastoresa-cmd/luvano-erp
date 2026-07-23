@@ -48,9 +48,11 @@ export const promotions = pgTable(
     offerType: text('offer_type', { enum: promotionOfferTypes }).notNull(),
     // إعدادات النوع (انظر التعليق أعلاه) — شكل حر حسب offerType.
     config: jsonb('config').notNull().default({}),
-    // الاستهداف الاختياري: منتج/صنف محدد يسري عليه العرض (null = كل المتجر).
+    // الاستهداف الاختياري: منتج/صنف/تصنيف محدد يسري عليه العرض (كلها null =
+    // كل المتجر). أولوية المطابقة: المتغيّر ثم المنتج ثم التصنيف.
     targetProductId: uuid('target_product_id'),
     targetVariantId: uuid('target_variant_id'),
+    targetCategory: text('target_category'),
     // قيمة الخصم الأساسية (نسخة مسطّحة من config لسهولة العرض في الجداول
     // والتقارير دون فك jsonb — النسبة أو المبلغ أو السعر حسب النوع).
     displayValue: numeric('display_value', { precision: 12, scale: 2 }),
