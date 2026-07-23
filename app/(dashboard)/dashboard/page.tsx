@@ -9,7 +9,13 @@ import { reconciliationAlerts, saleInvoices } from '@/db/schema'
 import { StatCard } from '@/components/ui/stat-card'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { SalesChart, type DailySalesPoint } from '@/components/charts/sales-chart'
-import { WarningCircle } from '@phosphor-icons/react/dist/ssr'
+import {
+  WarningCircle,
+  TrendUp,
+  ChartLineUp,
+  Bank,
+  Bell,
+} from '@phosphor-icons/react/dist/ssr'
 
 function formatCurrency(n: number): string {
   return n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
@@ -85,18 +91,34 @@ export default async function DashboardPage() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard title="الإيرادات (هذا الشهر)" value={formatCurrency(revenue)} suffix="ر.س" />
+          <StatCard
+            title="الإيرادات (هذا الشهر)"
+            value={formatCurrency(revenue)}
+            suffix="ر.س"
+            tint="teal"
+            icon={<TrendUp size={20} weight="bold" />}
+          />
           <StatCard
             title="صافي الربح"
             value={formatCurrency(netProfit)}
             suffix="ر.س"
             tone={netProfit >= 0 ? 'success' : 'danger'}
+            tint="violet"
+            icon={<ChartLineUp size={20} weight="bold" />}
           />
-          <StatCard title="إجمالي الأصول" value={formatCurrency(totalAssets)} suffix="ر.س" />
+          <StatCard
+            title="إجمالي الأصول"
+            value={formatCurrency(totalAssets)}
+            suffix="ر.س"
+            tint="sky"
+            icon={<Bank size={20} weight="bold" />}
+          />
           <StatCard
             title="تنبيهات مفتوحة"
             value={String(openAlerts)}
             tone={openAlerts > 0 ? 'danger' : 'neutral'}
+            tint={openAlerts > 0 ? 'rose' : 'amber'}
+            icon={<Bell size={20} weight="bold" />}
           />
         </div>
       )}

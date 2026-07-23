@@ -26,21 +26,32 @@
 
   /* Semantic status colors — used sparingly (badges, alerts), never as the
      page accent. */
-  --color-success-500: oklch(0.6 0.14 155);
-  --color-success-600: oklch(0.5 0.13 155);
-  --color-warning-500: oklch(0.72 0.15 75);
-  --color-warning-600: oklch(0.62 0.15 70);
-  --color-danger-500: oklch(0.58 0.19 25);
-  --color-danger-600: oklch(0.5 0.19 25);
+  --color-success-500: oklch(0.65 0.16 155);
+  --color-success-600: oklch(0.54 0.15 155);
+  --color-warning-500: oklch(0.76 0.16 75);
+  --color-warning-600: oklch(0.65 0.16 70);
+  --color-danger-500: oklch(0.62 0.2 25);
+  --color-danger-600: oklch(0.53 0.2 25);
+
+  /* Module tints — soft, low-chroma fills behind icons so each section reads
+     as its own place without breaking the single-accent rule (these never
+     become buttons, links, or page-level accents; only icon chips). */
+  --color-tint-teal: oklch(0.62 0.13 190);
+  --color-tint-violet: oklch(0.58 0.18 300);
+  --color-tint-amber: oklch(0.72 0.15 70);
+  --color-tint-rose: oklch(0.62 0.18 15);
+  --color-tint-sky: oklch(0.62 0.15 240);
 }
 
 :root {
-  /* Off-white/off-black, never pure #fff/#000 — kills flatness. */
-  --surface: oklch(0.99 0.002 275);
+  /* Off-white/off-black, never pure #fff/#000 — kills flatness. The page sits
+     slightly *below* cards so raised surfaces read as lifted rather than the
+     whole screen looking like one flat gray sheet. */
+  --surface: oklch(0.975 0.004 260);
   --surface-raised: oklch(1 0 0);
-  --surface-sunken: oklch(0.965 0.003 275);
-  --border-subtle: oklch(0.9 0.005 275);
-  --border-default: oklch(0.85 0.007 275);
+  --surface-sunken: oklch(0.955 0.005 260);
+  --border-subtle: oklch(0.92 0.005 260);
+  --border-default: oklch(0.87 0.007 260);
   --text-primary: oklch(0.18 0.01 275);
   --text-secondary: oklch(0.42 0.01 275);
   --text-tertiary: oklch(0.58 0.008 275);

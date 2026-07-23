@@ -52,10 +52,10 @@ export function Sidebar() {
               key={item.href}
               href={item.href}
               className={cn(
-                'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                'flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-all',
                 active
-                  ? 'bg-accent-500/10 text-accent-600'
-                  : 'text-[color:var(--text-secondary)] hover:bg-[color:var(--surface-sunken)]'
+                  ? 'bg-accent-600 text-white shadow-sm shadow-accent-600/20'
+                  : 'text-[color:var(--text-secondary)] hover:bg-[color:var(--surface-sunken)] hover:text-[color:var(--text-primary)]'
               )}
             >
               <Icon size={18} weight={active ? 'fill' : 'regular'} />

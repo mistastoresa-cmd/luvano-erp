@@ -10,7 +10,15 @@ export function Table({ className, ...props }: HTMLAttributes<HTMLTableElement>)
 }
 
 export function TableHead({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
-  return <thead className={cn('border-b border-[color:var(--border-default)]', className)} {...props} />
+  return (
+    <thead
+      className={cn(
+        'border-b border-[color:var(--border-subtle)] bg-[color:var(--surface-sunken)]/60',
+        className
+      )}
+      {...props}
+    />
+  )
 }
 
 export function TableBody({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) {
@@ -25,7 +33,7 @@ export function TableHeaderCell({ className, ...props }: ThHTMLAttributes<HTMLTa
   return (
     <th
       className={cn(
-        'px-3 py-2 text-start text-xs font-medium text-[color:var(--text-tertiary)]',
+        'px-3.5 py-2.5 text-start text-[11px] font-semibold uppercase tracking-wide text-[color:var(--text-tertiary)]',
         className
       )}
       {...props}
@@ -34,5 +42,5 @@ export function TableHeaderCell({ className, ...props }: ThHTMLAttributes<HTMLTa
 }
 
 export function TableCell({ className, ...props }: TdHTMLAttributes<HTMLTableCellElement>) {
-  return <td className={cn('px-3 py-2.5 text-[color:var(--text-primary)]', className)} {...props} />
+  return <td className={cn('px-3.5 py-3 text-[color:var(--text-primary)]', className)} {...props} />
 }
