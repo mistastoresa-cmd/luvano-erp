@@ -15,6 +15,11 @@ export interface PostStockTransferResult {
   lines: PostStockTransferLineResult[]
 }
 
+export interface TransferPhaseResult {
+  transferId: string
+  status: 'in_transit' | 'completed' | 'cancelled'
+}
+
 export interface WarehouseService {
   // Posts every line on an existing stock_transfer as a paired
   // transfer_out (at fromBranchId) / transfer_in (at toBranchId) inventory
@@ -31,4 +36,37 @@ export interface WarehouseService {
     tenantId: string,
     transferId: string
   ): Promise<PostStockTransferResult>
+
+  // Two-phase (approval) flow for branch-to-branch transfers:
+  //
+  // initiateStockTransfer — the SENDING branch ships stock: deducts every
+  // line from fromBranchId (transfer_out) and moves the transfer to
+  // 'in_transit'. The stock has left the source but hasn't landed anywhere
+  // yet; it shows as "جاري التحويل" to the receiver. Requires access to the
+  // source branch only.
+  initiateStockTransfer(
+    context: CallerContext,
+    tenantId: string,
+    transferId: string
+  ): Promise<TransferPhaseResult>
+
+  // approveStockTransfer — the RECEIVING branch approves ("تعميد"): adds
+  // every line to toBranchId (transfer_in, carrying the source's cost) and
+  // marks the transfer 'completed'. Requires access to the destination
+  // branch — so a receiver confirms goods actually arrived. Only valid from
+  // 'in_transit'.
+  approveStockTransfer(
+    context: CallerContext,
+    tenantId: string,
+    transferId: string
+  ): Promise<TransferPhaseResult>
+
+  // cancelStockTransfer — returns in-transit stock to the source branch
+  // (reverses the transfer_out) and marks the transfer 'cancelled'. Only
+  // valid from 'in_transit'; requires access to the source branch.
+  cancelStockTransfer(
+    context: CallerContext,
+    tenantId: string,
+    transferId: string
+  ): Promise<TransferPhaseResult>
 }

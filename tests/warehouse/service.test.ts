@@ -175,3 +175,96 @@ describe('WarehouseService — RBAC', () => {
     )
   })
 })
+
+describe('WarehouseService — two-phase transfer with approval', () => {
+  async function setup() {
+    const db = await createTestDb()
+    const { tenant, physicalBranch, onlineBranch } = await seedTenantWithBranch(db)
+    // Give the source branch stock at a known cost.
+    const { applyInventoryDeltaWithCost } = await import('@/lib/ledger/balance')
+    await applyInventoryDeltaWithCost(db, tenant.id, physicalBranch.id, 'SKU-1', 50, 20)
+    const [transfer] = await db
+      .insert(stockTransfers)
+      .values({
+        tenantId: tenant.id,
+        fromBranchId: physicalBranch.id,
+        toBranchId: onlineBranch.id,
+        transferNumber: 'TR-2P-1',
+        transferDate: '2026-07-20',
+      })
+      .returning()
+    await db
+      .insert(stockTransferLines)
+      .values({ transferId: transfer.id, sku: 'SKU-1', quantity: 10 })
+    return { db, tenant, from: physicalBranch, to: onlineBranch, transfer }
+  }
+
+  it('ships out on initiate (in_transit) then lands on approve (completed)', async () => {
+    const { db, tenant, from, to, transfer } = await setup()
+    const svc = createWarehouseService(db)
+
+    await svc.initiateStockTransfer(SYSTEM_CONTEXT, tenant.id, transfer.id)
+
+    // Stock left the source; receiver hasn't got it yet.
+    expect(await readInventoryBalance(db, tenant.id, from.id, 'SKU-1')).toBe(40)
+    expect(await readInventoryBalance(db, tenant.id, to.id, 'SKU-1')).toBe(0)
+    const [afterInit] = await db
+      .select({ status: stockTransfers.status })
+      .from(stockTransfers)
+      .where(eq(stockTransfers.id, transfer.id))
+    expect(afterInit.status).toBe('in_transit')
+
+    await svc.approveStockTransfer(SYSTEM_CONTEXT, tenant.id, transfer.id)
+
+    // Now the receiver has it, at the source's carried cost.
+    expect(await readInventoryBalance(db, tenant.id, to.id, 'SKU-1')).toBe(10)
+    const [afterApprove] = await db
+      .select({ status: stockTransfers.status })
+      .from(stockTransfers)
+      .where(eq(stockTransfers.id, transfer.id))
+    expect(afterApprove.status).toBe('completed')
+  })
+
+  it('returns stock to the source when an in-transit transfer is cancelled', async () => {
+    const { db, tenant, from, to, transfer } = await setup()
+    const svc = createWarehouseService(db)
+
+    await svc.initiateStockTransfer(SYSTEM_CONTEXT, tenant.id, transfer.id)
+    expect(await readInventoryBalance(db, tenant.id, from.id, 'SKU-1')).toBe(40)
+
+    await svc.cancelStockTransfer(SYSTEM_CONTEXT, tenant.id, transfer.id)
+
+    // Stock is back with the sender; receiver never got any.
+    expect(await readInventoryBalance(db, tenant.id, from.id, 'SKU-1')).toBe(50)
+    expect(await readInventoryBalance(db, tenant.id, to.id, 'SKU-1')).toBe(0)
+    const [row] = await db
+      .select({ status: stockTransfers.status })
+      .from(stockTransfers)
+      .where(eq(stockTransfers.id, transfer.id))
+    expect(row.status).toBe('cancelled')
+  })
+
+  it('rejects approving a transfer that is not in transit', async () => {
+    const { db, tenant, transfer } = await setup()
+    const svc = createWarehouseService(db)
+    await expect(
+      svc.approveStockTransfer(SYSTEM_CONTEXT, tenant.id, transfer.id)
+    ).rejects.toThrow(/in_transit/)
+  })
+
+  it('only the receiving branch can approve', async () => {
+    const { db, tenant, from, transfer } = await setup()
+    const svc = createWarehouseService(db)
+    await svc.initiateStockTransfer(SYSTEM_CONTEXT, tenant.id, transfer.id)
+
+    // A manager restricted to the SOURCE branch cannot approve the receipt.
+    const sourceOnly = {
+      userId: 'u-src',
+      role: 'branch_manager' as const,
+      branchAccess: { type: 'list' as const, branchIds: [from.id] },
+    }
+    await expect(svc.approveStockTransfer(sourceOnly, tenant.id, transfer.id)).rejects.toThrow(
+      'no access to branch'
+    )
+  })
+})

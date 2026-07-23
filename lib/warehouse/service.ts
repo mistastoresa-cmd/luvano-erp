@@ -5,9 +5,24 @@ import { applyInventoryDelta, applyInventoryDeltaWithCost, readInventoryCost } f
 import { raiseOversellAlert } from '../ledger/alerts'
 import { assertRoleAudited, assertBranchAccessAudited } from '../authz/service'
 import type { CallerContext } from '../authz/types'
-import type { WarehouseService, PostStockTransferResult, PostStockTransferLineResult } from './types'
+import type {
+  WarehouseService,
+  PostStockTransferResult,
+  PostStockTransferLineResult,
+  TransferPhaseResult,
+} from './types'
 
 const TRANSFER_ROLES = ['owner', 'accountant', 'branch_manager', 'staff'] as const
+
+async function loadTransfer(db: Db, tenantId: string, transferId: string) {
+  const [transfer] = await db
+    .select()
+    .from(stockTransfers)
+    .where(and(eq(stockTransfers.id, transferId), eq(stockTransfers.tenantId, tenantId)))
+    .limit(1)
+  if (!transfer) throw new Error(`stock_transfer ${transferId} not found for tenant`)
+  return transfer
+}
 
 async function insertTransferMovement(
   tx: Tx,
@@ -185,6 +200,171 @@ export function createWarehouseService(db: Db): WarehouseService {
           .where(eq(stockTransfers.id, transferId))
 
         return { transferId, lines: results }
+      })
+    },
+
+    async initiateStockTransfer(context, tenantId, transferId): Promise<TransferPhaseResult> {
+      assertRoleAudited(db, tenantId, context, [...TRANSFER_ROLES])
+      const transfer = await loadTransfer(db, tenantId, transferId)
+      // Shipping is the source branch's action.
+      assertBranchAccessAudited(db, tenantId, context, transfer.fromBranchId)
+      if (transfer.status !== 'draft') {
+        throw new Error(`transfer ${transferId} must be 'draft' to ship (is '${transfer.status}')`)
+      }
+
+      return db.transaction(async (tx) => {
+        const lines = await tx
+          .select()
+          .from(stockTransferLines)
+          .where(eq(stockTransferLines.transferId, transferId))
+        const occurredAt = new Date(transfer.transferDate)
+
+        for (const line of lines) {
+          const out = await insertTransferMovement(
+            tx,
+            tenantId,
+            transfer.fromBranchId,
+            line.sku,
+            -Math.abs(line.quantity),
+            'transfer_out',
+            `stock-transfer-line:${line.id}:out`,
+            occurredAt,
+            transferId
+          )
+          if (out.isNew) {
+            const fromBalance = await applyInventoryDelta(
+              tx,
+              tenantId,
+              transfer.fromBranchId,
+              line.sku,
+              -Math.abs(line.quantity)
+            )
+            if (fromBalance.oversold) {
+              await raiseOversellAlert(
+                tx,
+                tenantId,
+                transfer.fromBranchId,
+                line.sku,
+                fromBalance.resultingQuantity,
+                [out.movementId]
+              )
+            }
+          }
+          await tx
+            .update(stockTransferLines)
+            .set({ fromMovementId: out.movementId })
+            .where(eq(stockTransferLines.id, line.id))
+        }
+
+        await tx
+          .update(stockTransfers)
+          .set({ status: 'in_transit' })
+          .where(eq(stockTransfers.id, transferId))
+        return { transferId, status: 'in_transit' }
+      })
+    },
+
+    async approveStockTransfer(context, tenantId, transferId): Promise<TransferPhaseResult> {
+      assertRoleAudited(db, tenantId, context, [...TRANSFER_ROLES])
+      const transfer = await loadTransfer(db, tenantId, transferId)
+      // Approval ("تعميد") is the receiving branch's action.
+      assertBranchAccessAudited(db, tenantId, context, transfer.toBranchId)
+      if (transfer.status !== 'in_transit') {
+        throw new Error(`transfer ${transferId} must be 'in_transit' to approve (is '${transfer.status}')`)
+      }
+
+      return db.transaction(async (tx) => {
+        const lines = await tx
+          .select()
+          .from(stockTransferLines)
+          .where(eq(stockTransferLines.transferId, transferId))
+        const occurredAt = new Date()
+
+        for (const line of lines) {
+          // The cost basis travels with the goods — read the source branch's
+          // average cost at approval time (unchanged by the earlier out).
+          const sourceCost = await readInventoryCost(tx, tenantId, transfer.fromBranchId, line.sku)
+          const in_ = await insertTransferMovement(
+            tx,
+            tenantId,
+            transfer.toBranchId,
+            line.sku,
+            Math.abs(line.quantity),
+            'transfer_in',
+            `stock-transfer-line:${line.id}:in`,
+            occurredAt,
+            transferId
+          )
+          if (in_.isNew) {
+            await applyInventoryDeltaWithCost(
+              tx,
+              tenantId,
+              transfer.toBranchId,
+              line.sku,
+              Math.abs(line.quantity),
+              sourceCost
+            )
+          }
+          await tx
+            .update(stockTransferLines)
+            .set({ toMovementId: in_.movementId })
+            .where(eq(stockTransferLines.id, line.id))
+        }
+
+        await tx
+          .update(stockTransfers)
+          .set({ status: 'completed' })
+          .where(eq(stockTransfers.id, transferId))
+        return { transferId, status: 'completed' }
+      })
+    },
+
+    async cancelStockTransfer(context, tenantId, transferId): Promise<TransferPhaseResult> {
+      assertRoleAudited(db, tenantId, context, [...TRANSFER_ROLES])
+      const transfer = await loadTransfer(db, tenantId, transferId)
+      assertBranchAccessAudited(db, tenantId, context, transfer.fromBranchId)
+      if (transfer.status !== 'in_transit') {
+        throw new Error(`transfer ${transferId} must be 'in_transit' to cancel (is '${transfer.status}')`)
+      }
+
+      return db.transaction(async (tx) => {
+        const lines = await tx
+          .select()
+          .from(stockTransferLines)
+          .where(eq(stockTransferLines.transferId, transferId))
+        const occurredAt = new Date()
+
+        // Return the in-transit stock to the source branch (reverse the out).
+        for (const line of lines) {
+          const back = await insertTransferMovement(
+            tx,
+            tenantId,
+            transfer.fromBranchId,
+            line.sku,
+            Math.abs(line.quantity),
+            'transfer_in',
+            `stock-transfer-line:${line.id}:cancel`,
+            occurredAt,
+            transferId
+          )
+          if (back.isNew) {
+            const cost = await readInventoryCost(tx, tenantId, transfer.fromBranchId, line.sku)
+            await applyInventoryDeltaWithCost(
+              tx,
+              tenantId,
+              transfer.fromBranchId,
+              line.sku,
+              Math.abs(line.quantity),
+              cost
+            )
+          }
+        }
+
+        await tx
+          .update(stockTransfers)
+          .set({ status: 'cancelled' })
+          .where(eq(stockTransfers.id, transferId))
+        return { transferId, status: 'cancelled' }
       })
     },
   }
