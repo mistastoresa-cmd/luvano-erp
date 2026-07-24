@@ -2,41 +2,40 @@
 
 import { useActionState, useEffect, useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
-import { Plus, X, Money, Bank, Check as CheckIcon, Clock } from '@phosphor-icons/react'
+import { Plus, X, Money, Bank, CreditCard, Check as CheckIcon } from '@phosphor-icons/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import type { ActionState } from '@/lib/authz/action-session'
-import { createExpenseAction, postExpenseAction } from './actions'
+import { createSupplierPaymentAction, postSupplierPaymentAction } from './actions'
 
-type Method = 'cash' | 'bank' | 'cheque' | 'credit'
+type Method = 'cash' | 'bank_transfer' | 'card' | 'cheque'
 
 const METHODS: { value: Method; label: string; icon: React.ReactNode }[] = [
   { value: 'cash', label: 'نقدي / كاش', icon: <Money size={16} weight="bold" /> },
-  { value: 'bank', label: 'تحويل بنكي', icon: <Bank size={16} weight="bold" /> },
+  { value: 'bank_transfer', label: 'تحويل بنكي', icon: <Bank size={16} weight="bold" /> },
   { value: 'cheque', label: 'شيك', icon: <CheckIcon size={16} weight="bold" /> },
-  { value: 'credit', label: 'آجل (على الحساب)', icon: <Clock size={16} weight="bold" /> },
+  { value: 'card', label: 'بطاقة', icon: <CreditCard size={16} weight="bold" /> },
 ]
 
 const selectCls =
   'mt-1 h-9 w-full rounded-lg border border-[color:var(--border-default)] bg-[color:var(--surface)] px-3 text-sm text-[color:var(--text-primary)] outline-none focus:border-accent-500'
 
-export function ExpenseDialog({
-  expenseAccounts,
+export function SupplierPaymentDialog({
+  suppliers,
   banks,
   branches,
-  costCenters,
 }: {
-  expenseAccounts: { id: string; label: string }[]
+  suppliers: { id: string; name: string }[]
   banks: { id: string; label: string }[]
   branches: { id: string; name: string }[]
-  costCenters: { id: string; label: string }[]
 }) {
   const [open, setOpen] = useState(false)
   const [method, setMethod] = useState<Method>('cash')
-  const [state, formAction, pending] = useActionState<ActionState, FormData>(createExpenseAction, {
-    ok: false,
-  })
+  const [state, formAction, pending] = useActionState<ActionState, FormData>(
+    createSupplierPaymentAction,
+    { ok: false }
+  )
 
   useEffect(() => {
     if (state.ok) {
@@ -45,14 +44,14 @@ export function ExpenseDialog({
     }
   }, [state.ok])
 
-  const needsBank = method === 'bank' || method === 'cheque'
+  const needsBank = method === 'bank_transfer' || method === 'cheque'
 
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
       <Dialog.Trigger asChild>
         <Button>
           <Plus size={16} weight="bold" />
-          مصروف جديد
+          دفعة جديدة
         </Button>
       </Dialog.Trigger>
       <Dialog.Portal>
@@ -60,7 +59,7 @@ export function ExpenseDialog({
         <Dialog.Content className="fixed start-1/2 top-1/2 z-50 max-h-[90dvh] w-[94vw] max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-raised)] p-5 shadow-xl rtl:translate-x-1/2">
           <div className="mb-4 flex items-center justify-between">
             <Dialog.Title className="text-base font-semibold text-[color:var(--text-primary)]">
-              تسجيل مصروف
+              سداد لمورد
             </Dialog.Title>
             <Dialog.Close className="rounded-md p-1 text-[color:var(--text-tertiary)] hover:bg-[color:var(--surface-sunken)]">
               <X size={18} />
@@ -68,35 +67,42 @@ export function ExpenseDialog({
           </div>
 
           <form action={formAction} className="space-y-4">
-            <input type="hidden" name="paymentMethod" value={method} />
+            <input type="hidden" name="method" value={method} />
 
             <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
               <div className="sm:col-span-2">
-                <Label htmlFor="expenseAccountId">
-                  حساب المصروف<span className="text-danger-600"> *</span>
+                <Label htmlFor="supplierId">
+                  المورد<span className="text-danger-600"> *</span>
                 </Label>
-                <select id="expenseAccountId" name="expenseAccountId" required defaultValue="" className={selectCls}>
+                <select id="supplierId" name="supplierId" required defaultValue="" className={selectCls}>
                   <option value="" disabled>
-                    اختر من شجرة الحسابات…
+                    اختر المورد…
                   </option>
-                  {expenseAccounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.label}
+                  {suppliers.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
                     </option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <Label htmlFor="expenseDate">
+                <Label htmlFor="paymentDate">
                   التاريخ<span className="text-danger-600"> *</span>
                 </Label>
-                <Input id="expenseDate" name="expenseDate" type="date" required />
+                <Input id="paymentDate" name="paymentDate" type="date" required />
               </div>
+              <div>
+                <Label htmlFor="amount">
+                  المبلغ (ر.س)<span className="text-danger-600"> *</span>
+                </Label>
+                <Input id="amount" name="amount" type="number" step="any" required placeholder="5000" />
+              </div>
+
               <div>
                 <Label htmlFor="branchId">الفرع (اختياري)</Label>
                 <select id="branchId" name="branchId" defaultValue="" className={selectCls}>
-                  <option value="">مصروف مركزي</option>
+                  <option value="">بدون فرع</option>
                   {branches.map((b) => (
                     <option key={b.id} value={b.id}>
                       {b.name}
@@ -104,41 +110,12 @@ export function ExpenseDialog({
                   ))}
                 </select>
               </div>
-
               <div>
-                <Label htmlFor="costCenterId">مركز التكلفة (اختياري)</Label>
-                <select id="costCenterId" name="costCenterId" defaultValue="" className={selectCls}>
-                  <option value="">بدون مركز</option>
-                  {costCenters.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <Label htmlFor="amount">
-                  المبلغ (ر.س)<span className="text-danger-600"> *</span>
-                </Label>
-                <Input id="amount" name="amount" type="number" step="any" required placeholder="1000" />
-              </div>
-              <div>
-                <Label htmlFor="taxAmount">ضريبة المدخلات (ر.س)</Label>
-                <Input id="taxAmount" name="taxAmount" type="number" step="any" placeholder="150" />
-              </div>
-
-              <div className="sm:col-span-2">
-                <Label htmlFor="beneficiary">الجهة المستفيدة</Label>
-                <Input id="beneficiary" name="beneficiary" placeholder="مؤجر المحل" />
-              </div>
-              <div className="sm:col-span-2">
-                <Label htmlFor="description">البيان</Label>
-                <Input id="description" name="description" placeholder="إيجار شهر يوليو" />
+                <Label htmlFor="reference">المرجع</Label>
+                <Input id="reference" name="reference" placeholder="رقم الحوالة" />
               </div>
             </div>
 
-            {/* payment method picker */}
             <div>
               <Label>طريقة الدفع</Label>
               <div className="mt-1.5 grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -219,7 +196,7 @@ export function ExpenseDialog({
                 </Button>
               </Dialog.Close>
               <Button type="submit" disabled={pending}>
-                {pending ? 'جارٍ الحفظ…' : 'حفظ المصروف'}
+                {pending ? 'جارٍ الحفظ…' : 'حفظ الدفعة'}
               </Button>
             </div>
           </form>
@@ -229,13 +206,13 @@ export function ExpenseDialog({
   )
 }
 
-export function PostExpenseButton({ expenseId }: { expenseId: string }) {
-  const [state, action, pending] = useActionState<ActionState, FormData>(postExpenseAction, {
+export function PostPaymentButton({ paymentId }: { paymentId: string }) {
+  const [state, action, pending] = useActionState<ActionState, FormData>(postSupplierPaymentAction, {
     ok: false,
   })
   return (
     <form action={action}>
-      <input type="hidden" name="expenseId" value={expenseId} />
+      <input type="hidden" name="paymentId" value={paymentId} />
       <Button type="submit" variant="secondary" disabled={pending} className="h-7 px-2 text-xs">
         {pending ? '...' : 'ترحيل'}
       </Button>

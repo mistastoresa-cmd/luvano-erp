@@ -17,6 +17,8 @@ import {
   Megaphone,
   UsersThree,
   Buildings,
+  ChartPieSlice,
+  Money,
   Storefront,
   Books,
   CaretDown,
@@ -74,6 +76,7 @@ const NAV: NavEntry[] = [
     children: [
       { href: '/purchasing', label: 'أوامر الشراء', icon: ShoppingCart },
       { href: '/suppliers', label: 'الموردون', icon: Truck },
+      { href: '/supplier-payments', label: 'دفعات الموردين', icon: Money },
     ],
   },
   {
@@ -84,6 +87,7 @@ const NAV: NavEntry[] = [
       { href: '/accounting', label: 'شجرة الحسابات والقيود', icon: Books },
       { href: '/expenses', label: 'المصروفات', icon: Receipt },
       { href: '/banks', label: 'البنوك', icon: Bank },
+      { href: '/cost-centers', label: 'مراكز التكلفة', icon: ChartPieSlice },
     ],
   },
   { href: '/hr', label: 'الموارد البشرية', icon: UsersThree },

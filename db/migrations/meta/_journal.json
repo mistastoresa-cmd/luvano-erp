@@ -120,6 +120,20 @@
       "when": 1784879384600,
       "tag": "0016_absent_rick_jones",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1784907335845,
+      "tag": "0017_curved_master_chief",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1784907553838,
+      "tag": "0018_easy_turbo",
+      "breakpoints": true
     }
   ]
 }

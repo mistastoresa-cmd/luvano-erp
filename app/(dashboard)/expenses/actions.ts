@@ -48,6 +48,7 @@ export async function createExpenseAction(
     const { expenseId } = await svc.createExpense(context, {
       tenantId,
       branchId: str(formData.get('branchId')),
+      costCenterId: str(formData.get('costCenterId')),
       expenseNumber: await nextExpenseNumber(db, tenantId),
       expenseDate,
       expenseAccountId,

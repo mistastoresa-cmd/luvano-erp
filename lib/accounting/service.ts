@@ -7,6 +7,7 @@ import {
   supplierPayments,
   saleInvoices,
   saleInvoiceLines,
+  bankAccounts,
 } from '@/db/schema'
 import type { Db, Tx } from '@/db/client'
 import { readInventoryCost } from '../ledger/balance'
@@ -17,6 +18,7 @@ import type {
   AccountMappingKey,
   PostJournalEntryInput,
   PostJournalEntryResult,
+  JournalLineInput,
 } from './types'
 
 // GL posting is a core accounting function — owner/accountant only, unlike
@@ -65,6 +67,7 @@ export async function postJournalEntryInTx(
     .values({
       tenantId: input.tenantId,
       branchId: input.branchId,
+      costCenterId: input.costCenterId,
       entryNumber,
       entryDate: input.entryDate,
       description: input.description,
@@ -178,6 +181,20 @@ export function createAccountingService(db: Db): AccountingService {
 
         const amount = Number(payment.amount)
 
+        // Credit the specific bank the money left when one is named
+        // (bank transfer / cheque); otherwise fall back to the generic cash
+        // account, which is what a till payment actually is.
+        let creditLine: JournalLineInput = { accountKey: 'cash', credit: amount }
+        if (payment.bankAccountId) {
+          const [bank] = await tx
+            .select({ chartAccountId: bankAccounts.chartAccountId })
+            .from(bankAccounts)
+            .where(and(eq(bankAccounts.id, payment.bankAccountId), eq(bankAccounts.tenantId, tenantId)))
+            .limit(1)
+          if (!bank) throw new Error(`bank_account ${payment.bankAccountId} not found for tenant`)
+          creditLine = { accountId: bank.chartAccountId, credit: amount }
+        }
+
         const result = await postJournalEntryInTx(tx, {
           tenantId,
           branchId: payment.branchId ?? undefined,
@@ -185,10 +202,7 @@ export function createAccountingService(db: Db): AccountingService {
           sourceType: 'supplier_payment',
           sourceReference: payment.id,
           description: `Supplier payment ${payment.id}`,
-          lines: [
-            { accountKey: 'accounts_payable', debit: amount },
-            { accountKey: 'cash', credit: amount },
-          ],
+          lines: [{ accountKey: 'accounts_payable', debit: amount }, creditLine],
         })
 
         await tx

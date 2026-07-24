@@ -4,7 +4,7 @@ import { eq, and, desc } from 'drizzle-orm'
 import { getDb } from '@/db/client'
 import { resolveDashboardSession } from '@/lib/authz/session'
 import { hasBranchAccess } from '@/lib/authz/types'
-import { expenses, chartOfAccounts, bankAccounts, branches } from '@/db/schema'
+import { expenses, chartOfAccounts, bankAccounts, branches, costCenters } from '@/db/schema'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { StatCard } from '@/components/ui/stat-card'
@@ -45,7 +45,7 @@ export default async function ExpensesPage() {
   const { tenantId, context } = session
 
   const db = await getDb()
-  const [rows, expenseAccounts, banks, branchRows] = await Promise.all([
+  const [rows, expenseAccounts, banks, branchRows, centres] = await Promise.all([
     db
       .select({
         id: expenses.id,
@@ -81,6 +81,11 @@ export default async function ExpensesPage() {
       .from(branches)
       .where(eq(branches.tenantId, tenantId))
       .orderBy(branches.name),
+    db
+      .select({ id: costCenters.id, code: costCenters.code, name: costCenters.name })
+      .from(costCenters)
+      .where(and(eq(costCenters.tenantId, tenantId), eq(costCenters.isActive, true)))
+      .orderBy(costCenters.code),
   ])
 
   // Central expenses (no branch) are visible to everyone; branch ones follow
@@ -102,6 +107,7 @@ export default async function ExpensesPage() {
               label: b.accountNumber ? `${b.bankName} · ${b.accountNumber}` : b.bankName,
             }))}
             branches={branchRows}
+            costCenters={centres.map((c) => ({ id: c.id, label: `${c.code} · ${c.name}` }))}
           />
         }
       />

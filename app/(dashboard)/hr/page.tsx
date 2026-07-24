@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { PageHeader } from '@/components/app-shell/page-header'
 import { AddResourceDialog } from '@/components/forms/resource-form'
 import { createEmployeeAction } from './actions'
+import { HrTabs } from './hr-tabs'
 import {
   Table,
   TableHead,
@@ -65,6 +66,7 @@ export default async function HRPage() {
           )
         }
       />
+      <HrTabs active="employees" />
 
       {denied ? (
         <Card>

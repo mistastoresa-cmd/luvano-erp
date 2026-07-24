@@ -15,7 +15,7 @@ async function setup() {
   // An expense account to charge, and a bank with its own chart account.
   const [rent] = await db
     .insert(chartOfAccounts)
-    .values({ tenantId: tenant.id, code: '5300', name: 'إيجارات', type: 'expense' })
+    .values({ tenantId: tenant.id, code: '5901', name: 'إيجار اختبار', type: 'expense' })
     .returning()
   const [bankChart] = await db
     .insert(chartOfAccounts)

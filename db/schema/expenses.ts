@@ -14,6 +14,7 @@ import { chartOfAccounts } from './chart-of-accounts'
 import { bankAccounts } from './bank-accounts'
 import { suppliers } from './suppliers'
 import { journalEntries } from './journal-entries'
+import { costCenters } from './cost-centers'
 
 // طرق الدفع المشتركة لكل حركة مالية (مصروف، دفعة مورد، أي سداد):
 // - cash: من الصندوق/النقدية
@@ -36,6 +37,8 @@ export const expenses = pgTable(
       .references(() => tenants.id),
     // اختياري — مصروف مركزي لا يخص فرعاً محدداً.
     branchId: uuid('branch_id').references(() => branches.id),
+    // بُعد تحليلي مستقل عن الفرع (انظر cost-centers.ts).
+    costCenterId: uuid('cost_center_id').references(() => costCenters.id),
     expenseNumber: text('expense_number').notNull(),
     expenseDate: date('expense_date').notNull(),
     // حساب المصروف من الشجرة (نوعه expense) — مدين القيد.

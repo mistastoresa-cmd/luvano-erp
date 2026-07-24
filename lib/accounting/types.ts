@@ -29,6 +29,8 @@ export interface JournalLineInput {
 export interface PostJournalEntryInput {
   tenantId: string
   branchId?: string
+  // Optional analytical dimension, independent of the branch.
+  costCenterId?: string
   entryDate: Date
   sourceType: JournalSourceType
   // Required whenever this posting should be idempotent against re-runs

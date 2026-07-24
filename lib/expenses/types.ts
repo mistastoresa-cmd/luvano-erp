@@ -4,6 +4,7 @@ import type { PaymentMethod } from '@/db/schema'
 export interface CreateExpenseInput {
   tenantId: string
   branchId?: string
+  costCenterId?: string
   expenseNumber: string
   expenseDate: string
   expenseAccountId: string

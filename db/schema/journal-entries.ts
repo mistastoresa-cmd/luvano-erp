@@ -2,6 +2,7 @@ import { pgTable, uuid, text, timestamp, uniqueIndex, index } from 'drizzle-orm/
 import { sql } from 'drizzle-orm'
 import { tenants } from './tenants'
 import { branches } from './branches'
+import { costCenters } from './cost-centers'
 
 // رأس القيد المحاسبي. القيد نفسه (مجموع مدين = مجموع دائن) هو ثابت محاسبي
 // (invariant) يُفرض على مستوى منطق التطبيق عند إنشاء القيد مع بنوده معاً
@@ -17,6 +18,8 @@ export const journalEntries = pgTable(
       .references(() => tenants.id),
     // فرع اختياري — بعض القيود (مثل مصاريف مركزية) لا تخص فرعاً محدداً.
     branchId: uuid('branch_id').references(() => branches.id),
+    // بُعد تحليلي مستقل عن الفرع (انظر cost-centers.ts).
+    costCenterId: uuid('cost_center_id').references(() => costCenters.id),
     entryNumber: text('entry_number').notNull(),
     entryDate: timestamp('entry_date', { withTimezone: true }).notNull(),
     description: text('description'),

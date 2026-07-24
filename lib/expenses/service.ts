@@ -38,6 +38,7 @@ export function createExpensesService(db: Db): ExpensesService {
         .values({
           tenantId: input.tenantId,
           branchId: input.branchId,
+          costCenterId: input.costCenterId,
           expenseNumber: input.expenseNumber,
           expenseDate: input.expenseDate,
           expenseAccountId: input.expenseAccountId,
@@ -106,6 +107,7 @@ export function createExpensesService(db: Db): ExpensesService {
         const result = await postJournalEntryInTx(tx, {
           tenantId,
           branchId: expense.branchId ?? undefined,
+          costCenterId: expense.costCenterId ?? undefined,
           entryDate: new Date(expense.expenseDate),
           sourceType: 'adjustment',
           sourceReference: `expense:${expense.id}`,
