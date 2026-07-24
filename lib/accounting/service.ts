@@ -97,7 +97,13 @@ export async function postJournalEntryInTx(
   const journalEntryId = entryRow.id
 
   for (const line of input.lines) {
-    const accountId = await resolveAccountId(tx, input.tenantId, line.accountKey)
+    // A line names its account by mapping key or by concrete chart id.
+    if (!line.accountKey && !line.accountId) {
+      throw new Error('journal line must set either accountKey or accountId')
+    }
+    const accountId = line.accountId
+      ? line.accountId
+      : await resolveAccountId(tx, input.tenantId, line.accountKey!)
     await tx.insert(journalEntryLines).values({
       journalEntryId,
       accountId,

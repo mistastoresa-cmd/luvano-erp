@@ -13,8 +13,14 @@ export type JournalSourceType =
   | 'adjustment'
   | 'system'
 
+// A journal line names its account either by a stable mapping *key* (the
+// auto-posting paths: sales, purchases, payroll…) or by a concrete
+// chart_of_accounts id — needed once users pick a specific account in the UI
+// (an expense account, a particular bank account) that has no fixed key.
+// Exactly one of the two must be set.
 export interface JournalLineInput {
-  accountKey: AccountMappingKey
+  accountKey?: AccountMappingKey
+  accountId?: string
   debit?: number
   credit?: number
   description?: string
