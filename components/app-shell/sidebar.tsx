@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useState } from 'react'
 import {
   SquaresFour,
   Receipt,
@@ -11,34 +12,98 @@ import {
   ShoppingCart,
   Truck,
   Calculator,
-  Receipt as ReceiptIcon,
   Bank,
   Users,
   Megaphone,
   UsersThree,
   Buildings,
+  Storefront,
+  Books,
+  CaretDown,
+  type Icon as PhosphorIcon,
 } from '@phosphor-icons/react'
 import { cn } from '@/components/ui/utils'
 
-const NAV_ITEMS = [
+interface NavLeaf {
+  href: string
+  label: string
+  icon: PhosphorIcon
+}
+interface NavGroup {
+  key: string
+  label: string
+  icon: PhosphorIcon
+  children: NavLeaf[]
+}
+type NavEntry = NavLeaf | NavGroup
+
+function isGroup(e: NavEntry): e is NavGroup {
+  return 'children' in e
+}
+
+// Grouped by business function rather than one flat list — accounting-side
+// screens (chart, expenses, banks) live under one parent, same for the
+// sales/inventory/purchasing sides, so the sidebar stays readable as modules
+// keep landing.
+const NAV: NavEntry[] = [
   { href: '/dashboard', label: 'لوحة التحكم', icon: SquaresFour },
-  { href: '/sales', label: 'المبيعات', icon: Receipt },
-  { href: '/inventory', label: 'المخزون', icon: Package },
-  { href: '/transfers', label: 'تحويلات المخزون', icon: ArrowsLeftRight },
-  { href: '/products', label: 'المنتجات', icon: Tag },
-  { href: '/purchasing', label: 'المشتريات', icon: ShoppingCart },
-  { href: '/suppliers', label: 'الموردون', icon: Truck },
-  { href: '/accounting', label: 'المحاسبة', icon: Calculator },
-  { href: '/expenses', label: 'المصروفات', icon: ReceiptIcon },
-  { href: '/banks', label: 'البنوك', icon: Bank },
-  { href: '/customers', label: 'العملاء', icon: Users },
-  { href: '/marketing', label: 'التسويق والعروض', icon: Megaphone },
+  {
+    key: 'sales',
+    label: 'المبيعات',
+    icon: Storefront,
+    children: [
+      { href: '/sales', label: 'فواتير البيع', icon: Receipt },
+      { href: '/customers', label: 'العملاء', icon: Users },
+      { href: '/marketing', label: 'التسويق والعروض', icon: Megaphone },
+    ],
+  },
+  {
+    key: 'inventory',
+    label: 'المخزون',
+    icon: Package,
+    children: [
+      { href: '/inventory', label: 'الأرصدة', icon: Package },
+      { href: '/products', label: 'المنتجات', icon: Tag },
+      { href: '/transfers', label: 'التحويلات', icon: ArrowsLeftRight },
+    ],
+  },
+  {
+    key: 'purchasing',
+    label: 'المشتريات',
+    icon: ShoppingCart,
+    children: [
+      { href: '/purchasing', label: 'أوامر الشراء', icon: ShoppingCart },
+      { href: '/suppliers', label: 'الموردون', icon: Truck },
+    ],
+  },
+  {
+    key: 'accounting',
+    label: 'المحاسبة',
+    icon: Calculator,
+    children: [
+      { href: '/accounting', label: 'شجرة الحسابات والقيود', icon: Books },
+      { href: '/expenses', label: 'المصروفات', icon: Receipt },
+      { href: '/banks', label: 'البنوك', icon: Bank },
+    ],
+  },
   { href: '/hr', label: 'الموارد البشرية', icon: UsersThree },
   { href: '/branches', label: 'الفروع', icon: Buildings },
-] as const
+]
+
+function leafActive(pathname: string, href: string): boolean {
+  return pathname === href || pathname.startsWith(href + '/')
+}
 
 export function Sidebar() {
   const pathname = usePathname()
+
+  // A group starts open when the current route lives inside it, and the user
+  // can toggle from there.
+  const [manual, setManual] = useState<Record<string, boolean>>({})
+  function groupOpen(g: NavGroup): boolean {
+    if (g.key in manual) return manual[g.key]
+    return g.children.some((c) => leafActive(pathname, c.href))
+  }
 
   return (
     <aside className="flex h-[100dvh] w-60 shrink-0 flex-col border-e border-[color:var(--border-subtle)] bg-[color:var(--surface-raised)]">
@@ -50,23 +115,76 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-2">
-        {NAV_ITEMS.map((item) => {
-          const active = pathname === item.href || pathname.startsWith(item.href + '/')
-          const Icon = item.icon
+        {NAV.map((entry) => {
+          if (!isGroup(entry)) {
+            const active = leafActive(pathname, entry.href)
+            const Icon = entry.icon
+            return (
+              <Link
+                key={entry.href}
+                href={entry.href}
+                className={cn(
+                  'flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-all',
+                  active
+                    ? 'bg-accent-600 text-white shadow-sm shadow-accent-600/20'
+                    : 'text-[color:var(--text-secondary)] hover:bg-[color:var(--surface-sunken)] hover:text-[color:var(--text-primary)]'
+                )}
+              >
+                <Icon size={18} weight={active ? 'fill' : 'regular'} />
+                {entry.label}
+              </Link>
+            )
+          }
+
+          const open = groupOpen(entry)
+          const hasActiveChild = entry.children.some((c) => leafActive(pathname, c.href))
+          const GroupIcon = entry.icon
+
           return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                'flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-all',
-                active
-                  ? 'bg-accent-600 text-white shadow-sm shadow-accent-600/20'
-                  : 'text-[color:var(--text-secondary)] hover:bg-[color:var(--surface-sunken)] hover:text-[color:var(--text-primary)]'
+            <div key={entry.key}>
+              <button
+                type="button"
+                onClick={() => setManual((m) => ({ ...m, [entry.key]: !open }))}
+                className={cn(
+                  'flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-all',
+                  hasActiveChild && !open
+                    ? 'bg-accent-500/10 text-accent-600'
+                    : 'text-[color:var(--text-secondary)] hover:bg-[color:var(--surface-sunken)] hover:text-[color:var(--text-primary)]'
+                )}
+                aria-expanded={open}
+              >
+                <GroupIcon size={18} weight={hasActiveChild ? 'fill' : 'regular'} />
+                <span className="flex-1 text-start">{entry.label}</span>
+                <CaretDown
+                  size={13}
+                  className={cn('transition-transform', open && 'rotate-180')}
+                />
+              </button>
+
+              {open && (
+                <div className="mt-0.5 space-y-0.5 border-s border-[color:var(--border-subtle)] pe-0 ps-3 ms-4">
+                  {entry.children.map((c) => {
+                    const active = leafActive(pathname, c.href)
+                    const Icon = c.icon
+                    return (
+                      <Link
+                        key={c.href}
+                        href={c.href}
+                        className={cn(
+                          'flex items-center gap-2 rounded-lg px-2.5 py-2 text-[13px] font-medium transition-all',
+                          active
+                            ? 'bg-accent-600 text-white shadow-sm shadow-accent-600/20'
+                            : 'text-[color:var(--text-tertiary)] hover:bg-[color:var(--surface-sunken)] hover:text-[color:var(--text-primary)]'
+                        )}
+                      >
+                        <Icon size={15} weight={active ? 'fill' : 'regular'} />
+                        {c.label}
+                      </Link>
+                    )
+                  })}
+                </div>
               )}
-            >
-              <Icon size={18} weight={active ? 'fill' : 'regular'} />
-              {item.label}
-            </Link>
+            </div>
           )
         })}
       </nav>

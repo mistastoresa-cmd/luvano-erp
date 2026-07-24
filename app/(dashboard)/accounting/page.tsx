@@ -10,6 +10,7 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/app-shell/page-header'
+import { ChartToolbar } from './chart-toolbar'
 import {
   Table,
   TableHead,
@@ -71,9 +72,14 @@ export default async function AccountingPage() {
         }
       />
 
+      <ChartToolbar />
+
       <Card>
         <CardHeader>
-          <CardTitle>شجرة الحسابات ({accounts.length})</CardTitle>
+          <CardTitle>
+            شجرة الحسابات ({accounts.length}) — منها{' '}
+            {accounts.filter((a) => a.type === 'expense').length} حساب مصروفات
+          </CardTitle>
         </CardHeader>
         <Table>
           <TableHead>
